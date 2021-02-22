@@ -1,0 +1,16 @@
+{
+  "name": "@rx-recoil/persistence",
+  "version": "0.0.1-alpha.1",
+  "license": "MIT",
+  "peerDependencies": {
+    "rxjs": ">=6",
+    "@rx-recoil/core": "*"
+  },
+  "author": {
+    "name": "Kalle Ott",
+    "url": "https://github.com/kaoDev/"
+  },
+  "repository": {
+    "url": "https://github.com/kaoDev/rx-recoil"
+  }
+}
