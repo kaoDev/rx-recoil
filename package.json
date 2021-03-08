@@ -1,6 +1,6 @@
 {
   "name": "rx-recoil",
-  "version": "0.0.1-alpha.1",
+  "version": "0.0.2",
   "license": "MIT",
   "repository": {
     "url": "https://github.com/kaoDev/rx-recoil"
@@ -34,7 +34,9 @@
     "help": "nx help",
     "prepublish": "npm run sync-version && nx run-many --target=test --all && nx run-many --target=build --all",
     "sync-version": "node --experimental-json-modules --experimental-modules ./scripts/syncVersion.mjs",
-    "publish": ""
+    "publish:core": "npm publish dist/libs/core",
+    "publish:persistence": "npm publish dist/libs/persistence",
+    "publish": "npm run publish:core && npm run publish:persistence"
   },
   "private": false,
   "devDependencies": {

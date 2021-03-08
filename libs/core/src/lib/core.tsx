@@ -10,45 +10,34 @@ import type { Observable } from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { createAtom } from './atom';
 import { ErrorReporter } from './reportError';
-import {
-  createAsyncSelector,
-  createMutableSelector,
-  createSelector,
-} from './selector';
+import { createSelector } from './selector';
 import { createPublicStateWriteAccess } from './stateAccess';
 import {
-  AsyncSelector,
-  AsyncSelectorDefinition,
-  Atom,
   AtomDefinition,
   EMPTY_TYPE,
   EMPTY_VALUE,
   InternalStateAccess,
-  MutatableSelector,
   MutatableSelectorDefinition,
   MutatableState,
   MutatableStateDefinition,
-  ReadOnlyAsyncState,
   ReadOnlyState,
   RegisteredState,
-  Selector,
   SelectorDefinition,
   StateDefinition,
   StateType,
-  SyncStateDefinition,
 } from './types';
 
 function cleanupStateObject(
   stateMap: Map<symbol, SharedState>,
   usageMap: Map<symbol, Set<symbol>>,
   stateKey: symbol,
-  useId: symbol
+  usageId: symbol
 ) {
   const state = stateMap.get(stateKey);
   const dependencies = usageMap.get(stateKey);
 
   if (state && dependencies) {
-    dependencies.delete(useId);
+    dependencies.delete(usageId);
 
     if (dependencies.size === 0) {
       state.onUnmount?.();
@@ -99,35 +88,35 @@ function createAddState(
 ) {
   function addState<Value, UpdateEvent>(
     definition: StateDefinition<Value, UpdateEvent>,
-    useId: symbol
+    usageId: symbol
   ) {
-    switch (definition.type) {
-      case StateType.Atom: {
-        const onMount = definition.onMount
-          ? () => {
-              const publicStateAccess = createPublicStateWriteAccess(
-                stateAcces,
+    const onMount = definition.onMount
+      ? () => {
+          const publicStateAccess = createPublicStateWriteAccess(
+            stateAcces,
+            definition.key
+          );
+          const cleanUp = definition.onMount?.(publicStateAccess);
+          const sharedStateObject = stateMap.get(definition.key);
+          if (sharedStateObject) {
+            sharedStateObject.onUnmount = async () => {
+              sharedStateObject.onUnmount = undefined;
+              cleanupStateObject(
+                stateMap,
+                usageMap,
+                definition.key,
                 definition.key
               );
-              const cleanUp = definition.onMount?.(publicStateAccess);
-              const sharedStateObject = stateMap.get(definition.key);
-              if (sharedStateObject) {
-                sharedStateObject.onUnmount = async () => {
-                  sharedStateObject.onUnmount = undefined;
-                  cleanupStateObject(
-                    stateMap,
-                    usageMap,
-                    definition.key,
-                    definition.key
-                  );
-                  if (cleanUp) {
-                    const mountingCleanup = await cleanUp;
-                    if (mountingCleanup) mountingCleanup();
-                  }
-                };
+              if (cleanUp) {
+                const mountingCleanup = await cleanUp;
+                if (mountingCleanup) mountingCleanup();
               }
-            }
-          : undefined;
+            };
+          }
+        }
+      : undefined;
+    switch (definition.type) {
+      case StateType.Atom: {
         const atom = addStateObject(
           stateMap,
           definition.key,
@@ -137,23 +126,13 @@ function createAddState(
 
         return atom;
       }
-      case StateType.Selector: {
-        const selector = addStateObject(stateMap, definition.key, () =>
-          createSelector(definition, stateAcces, useId, report)
-        );
-
-        return selector;
-      }
-      case StateType.AsyncSelector: {
-        const selector = addStateObject(stateMap, definition.key, () =>
-          createAsyncSelector(definition, stateAcces, useId, report)
-        );
-
-        return selector;
-      }
+      case StateType.Selector:
       case StateType.MutatableSelector: {
-        const selector = addStateObject(stateMap, definition.key, () =>
-          createMutableSelector(definition, stateAcces, useId, report)
+        const selector = addStateObject(
+          stateMap,
+          definition.key,
+          () => createSelector(definition, stateAcces, usageId, report),
+          onMount
         );
 
         return selector;
@@ -177,40 +156,41 @@ export function createStateContextValue(report?: ErrorReporter) {
   const usageMap = new Map<symbol, Set<symbol>>();
 
   function getSource<Value>(
-    definition: SyncStateDefinition<Value, unknown>,
-    useId: symbol
+    definition: StateDefinition<Value, unknown>,
+    usageId: symbol
   ) {
     const state = contextGetter<Value, unknown>(
       definition,
-      useId
+      usageId
     ) as ReadOnlyState<Value>;
     return state.value$;
   }
 
   const internalStateAcces: InternalStateAccess = {
     getSource,
-    getFull: function getFull<Value>(
+    getAsync: function getFull<Value>(
       definition: StateDefinition<Value, unknown>,
-      useId: symbol
+      usageId: symbol
     ) {
-      const state = contextGetter<Value, unknown>(definition, useId) as
-        | ReadOnlyState<Value>
-        | ReadOnlyAsyncState<Value>;
+      const state = contextGetter<Value, unknown>(
+        definition,
+        usageId
+      ) as ReadOnlyState<Value>;
       return state;
     },
     get: function get<Value>(
-      definition: SyncStateDefinition<Value, unknown>,
-      useId: symbol
+      definition: StateDefinition<Value, unknown>,
+      usageId: symbol
     ) {
-      const value$ = getSource(definition, useId);
+      const value$ = getSource(definition, usageId);
       return value$.value;
     },
     set: function set<Value, UpdateEvent>(
       definition: MutatableStateDefinition<Value, UpdateEvent>,
-      useId: symbol,
+      usageId: symbol,
       change: UpdateEvent
     ) {
-      const state = contextGetter(definition, useId) as MutatableState<
+      const state = contextGetter(definition, usageId) as MutatableState<
         Value,
         UpdateEvent
       >;
@@ -250,36 +230,30 @@ export function StateRoot({
   );
 }
 
-let c = 0;
-
 export function useAtomicState<Value>(
   identifier: SelectorDefinition<Value>
-): Selector<Value>;
-export function useAtomicState<Value>(
-  identifier: AsyncSelectorDefinition<Value>
-): AsyncSelector<Value>;
+): ReadOnlyState<Value>;
 export function useAtomicState<Value, UpdateEvent>(
-  identifier: MutatableSelectorDefinition<Value, UpdateEvent>
-): MutatableSelector<Value, UpdateEvent>;
-export function useAtomicState<Value, UpdateEvent>(
-  identifier: AtomDefinition<Value, UpdateEvent>
-): Atom<Value, UpdateEvent>;
+  identifier:
+    | AtomDefinition<Value, UpdateEvent>
+    | MutatableSelectorDefinition<Value, UpdateEvent>
+): MutatableState<Value, UpdateEvent>;
 export function useAtomicState<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>
 ) {
   const getStateObject = useContext(stateContext);
-  const usageId = useRef(Symbol(`${identifier.debugKey}:${c++}`));
+  const usageId = useRef(Symbol(`${identifier.debugKey}`));
 
   useEffect(() => {
-    const usageId = Symbol(`${identifier.debugKey}:${c++}`);
-    registerStateUsage(getStateObject.usageMap, identifier.key, usageId);
+    const currentUsageId = usageId.current;
+    registerStateUsage(getStateObject.usageMap, identifier.key, currentUsageId);
 
     return () => {
       cleanupStateObject(
         getStateObject.stateMap,
         getStateObject.usageMap,
         identifier.key,
-        usageId
+        currentUsageId
       );
     };
   }, [getStateObject, identifier, usageId]);
@@ -287,77 +261,19 @@ export function useAtomicState<Value, UpdateEvent>(
   return getStateObject(identifier, usageId.current);
 }
 
-export function useMutableState<Value, UpdateEvent>(
-  identifier:
-    | AtomDefinition<Value, UpdateEvent>
-    | MutatableSelectorDefinition<Value, UpdateEvent>
-) {
-  const { useState } = useAtomicState(
-    identifier as AtomDefinition<Value, UpdateEvent>
-  );
-
-  return useState();
-}
-
-export function useAtomicValue<Value>(
-  identifier: AtomDefinition<Value, any>
-): Value;
-export function useAtomicValue<Value>(
+export function useAtom<Value>(
   identifier: SelectorDefinition<Value>
-): Value;
-export function useAtomicValue<Value>(
-  identifier: AsyncSelectorDefinition<Value>
-): Value | EMPTY_TYPE;
-export function useAtomicValue<Value>(
+): [value: Exclude<Value, EMPTY_TYPE>, _: never];
+export function useAtom<Value, UpdateEvent>(
   identifier:
-    | AtomDefinition<Value, any>
-    | SelectorDefinition<Value>
-    | AsyncSelectorDefinition<Value>
-) {
-  const { useValue } = useAtomicState(
-    identifier as AtomDefinition<Value, unknown>
-  );
-
-  return useValue();
-}
-
-export function useSuspendedAtomicValue<Value>(
-  identifier: AtomDefinition<Value | EMPTY_TYPE, any>
-): Value;
-export function useSuspendedAtomicValue<Value>(
-  identifier: SelectorDefinition<Value | EMPTY_TYPE>
-): Value;
-export function useSuspendedAtomicValue<Value>(
-  identifier: AsyncSelectorDefinition<Value | EMPTY_TYPE>
-): Value | EMPTY_TYPE;
-export function useSuspendedAtomicValue<Value>(
-  identifier:
-    | AtomDefinition<Value | EMPTY_TYPE, any>
-    | SelectorDefinition<Value | EMPTY_TYPE>
-    | AsyncSelectorDefinition<Value | EMPTY_TYPE>
-) {
-  const { value$, useValue } = useAtomicState(
-    identifier as AtomDefinition<Value | EMPTY_TYPE, any>
-  );
-
-  const value = useValue();
-
-  if (value === EMPTY_VALUE) {
-    throw (value$ as Observable<Value | EMPTY_TYPE>)
-      .pipe(
-        filter((val): val is Value => val !== EMPTY_VALUE),
-        take(1)
-      )
-      .toPromise();
-  }
-
-  return value;
-}
-
-export function useSuspendedMutableState<Value, UpdateEvent>(
-  identifier:
-    | AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>
-    | MutatableSelectorDefinition<Value | EMPTY_TYPE, UpdateEvent>
+    | MutatableSelectorDefinition<Value, UpdateEvent>
+    | AtomDefinition<Value, UpdateEvent>
+): [
+  value: Exclude<Value, EMPTY_TYPE>,
+  dispatchUpdate: (value: UpdateEvent) => void
+];
+export function useAtom<Value, UpdateEvent>(
+  identifier: StateDefinition<Value, UpdateEvent>
 ) {
   const { value$, useValue, dispatchUpdate } = useAtomicState(
     identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>
@@ -373,6 +289,26 @@ export function useSuspendedMutableState<Value, UpdateEvent>(
       )
       .toPromise();
   }
+
+  return [value, dispatchUpdate] as const;
+}
+
+export function useAtomRaw<Value>(
+  identifier: SelectorDefinition<Value>
+): [value: Value, _: never];
+export function useAtomRaw<Value, UpdateEvent>(
+  identifier:
+    | MutatableSelectorDefinition<Value, UpdateEvent>
+    | AtomDefinition<Value, UpdateEvent>
+): [value: Value, dispatchUpdate: (value: UpdateEvent) => void];
+export function useAtomRaw<Value, UpdateEvent>(
+  identifier: StateDefinition<Value, UpdateEvent>
+) {
+  const { useValue, dispatchUpdate } = useAtomicState(
+    identifier as AtomDefinition<Value, UpdateEvent>
+  );
+
+  const value = useValue();
 
   return [value, dispatchUpdate] as const;
 }

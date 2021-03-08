@@ -1,11 +1,7 @@
 import React, { Suspense, useCallback, useEffect } from 'react';
 import { interval } from 'rxjs';
 import { filter, withLatestFrom } from 'rxjs/operators';
-import {
-  EMPTY_VALUE,
-  useAtomicState,
-  useSuspendedMutableState,
-} from '@rx-recoil/core';
+import { EMPTY_VALUE, useAtomicState, useAtom } from '@rx-recoil/core';
 import { persistedAtom } from '@rx-recoil/persistence';
 
 const countState = persistedAtom({
@@ -49,7 +45,7 @@ function ResetButton() {
 }
 
 function ManualCounter() {
-  const [count, setCount] = useSuspendedMutableState(countState);
+  const [count, setCount] = useAtom(countState);
   const increment = () => {
     setCount(count + 1);
   };

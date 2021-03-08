@@ -1,5 +1,5 @@
 import React from 'react';
-import { atom, mutableSelector, useMutableState } from '@rx-recoil/core';
+import { atom, selector, useAtom } from '@rx-recoil/core';
 
 function fahrenheitToCelsius(fahrenheit: number) {
   if (isNaN(fahrenheit)) {
@@ -14,16 +14,18 @@ function celsiusToFahrenheit(celsius: number) {
   return (celsius * 9) / 5 + 32;
 }
 
-const tempCelsius = atom(0);
+const tempCelsius = atom<number, number>(0);
 
-const tempFahrenheit = mutableSelector(
+const tempFahrenheit = selector(
   ({ get }) => celsiusToFahrenheit(get(tempCelsius)),
-  ({ set }, newValue: number) => set(tempCelsius, fahrenheitToCelsius(newValue))
+  ({ set }, newValue: number) => {
+    set(tempCelsius, fahrenheitToCelsius(newValue));
+  }
 );
 
 export function Temperature() {
-  const [tempF, setTempF] = useMutableState(tempFahrenheit);
-  const [tempC, setTempC] = useMutableState(tempCelsius);
+  const [tempF, setTempF] = useAtom(tempFahrenheit);
+  const [tempC, setTempC] = useAtom(tempCelsius);
 
   const addTenCelsius = () => setTempC(tempC + 10);
   const addTenFahrenheit = () => setTempF(tempF + 10);

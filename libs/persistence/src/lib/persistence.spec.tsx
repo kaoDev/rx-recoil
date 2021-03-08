@@ -1,8 +1,4 @@
-import {
-  StateRoot,
-  useMutableState,
-  useSuspendedAtomicValue,
-} from '@rx-recoil/core';
+import { StateRoot, useAtom } from '@rx-recoil/core';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import React, { Suspense } from 'react';
 import { persistedAtom, Storage } from './persistence';
@@ -27,7 +23,7 @@ describe('Persistence atom', () => {
       deserialize,
     });
     const TestComponent = () => {
-      const value = useSuspendedAtomicValue(persistedState);
+      const [value] = useAtom(persistedState);
 
       return <div>{value}</div>;
     };
@@ -84,7 +80,7 @@ describe('Persistence atom', () => {
       deserialize,
     });
     const TestComponent = () => {
-      const value = useSuspendedAtomicValue(persistedState);
+      const [value] = useAtom(persistedState);
 
       return <div>{value}</div>;
     };
@@ -141,7 +137,7 @@ describe('Persistence atom', () => {
       serialize,
     });
     const TestComponent = () => {
-      const [, setValue] = useMutableState(persistedState);
+      const [, setValue] = useAtom(persistedState);
 
       return (
         <button onClick={() => setValue('changed state')}>change state</button>

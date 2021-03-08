@@ -1,80 +1,102 @@
-import { useEffect, useState } from 'react';
-import { BehaviorSubject, from, merge } from 'rxjs';
-import { startWith } from 'rxjs/operators';
+import { useEffect } from 'react';
+import {
+  BehaviorSubject,
+  from,
+  isObservable,
+  merge,
+  Observable,
+  of,
+} from 'rxjs';
+import { map, mergeMap, tap } from 'rxjs/operators';
+import { isPromise, useObservablueValue } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
-  createPublicAsyncStateReadAccess,
+  createPublicStateReadAccess,
   createPublicStateWriteAccess,
-  createPublicSyncStateReadAccess,
 } from './stateAccess';
 import {
-  AsyncSelector,
-  AsyncSelectorDefinition,
   AtomDefinition,
   EMPTY_TYPE,
   EMPTY_VALUE,
   InternalStateAccess,
-  MutatableSelector,
   MutatableSelectorDefinition,
-  ReadonlyAsyncStateValue,
-  Selector,
+  MutatableState,
+  ReadOnlyState,
+  ReadonlyStateValue,
   SelectorDefinition,
+  StateDefinition,
+  StateReadAccess,
   StateType,
-  SyncStateReadAccess,
+  StateWriteAccess,
 } from './types';
 
+// read-only selector
 export function selector<Value>(
-  get: SelectorDefinition<Value>['get']
-): SelectorDefinition<Value> {
+  read: (stateAccess: StateReadAccess) => Value
+): SelectorDefinition<Value>;
+export function selector<Value>(
+  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>
+): SelectorDefinition<Value | EMPTY_TYPE>;
+// writable derived selector
+export function selector<Value, Update>(
+  read: (stateAccess: StateReadAccess) => Value,
+  write: (stateAccess: StateWriteAccess, update: Update) => void
+): MutatableSelectorDefinition<Value, Update>;
+export function selector<Value, Update>(
+  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>,
+  write: (stateAccess: StateWriteAccess, update: Update) => void
+): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>;
+
+export function selector<Value, Update>(
+  read: (
+    stateAccess: StateReadAccess
+  ) => Value | Promise<Value> | Observable<Value>,
+  write?: (stateAccess: StateWriteAccess, update: Update) => void
+): SelectorDefinition<Value> | MutatableSelectorDefinition<Value, Update> {
+  if (write) {
+    return {
+      key: Symbol(),
+      type: StateType.MutatableSelector,
+      read,
+      write,
+    };
+  }
   return {
     key: Symbol(),
     type: StateType.Selector,
-    get,
+    read,
   };
 }
 
-export function mutableSelector<Value, UpdateEvent>(
-  get: MutatableSelectorDefinition<Value, UpdateEvent>['get'],
-  set: MutatableSelectorDefinition<Value, UpdateEvent>['set']
-): MutatableSelectorDefinition<Value, UpdateEvent> {
-  return {
-    key: Symbol(),
-    type: StateType.MutatableSelector,
-    get,
-    set,
-  };
-}
-
-export function asyncSelector<Value>(
-  get: AsyncSelectorDefinition<Value>['get']
-): AsyncSelectorDefinition<Value> {
-  return {
-    key: Symbol(),
-    type: StateType.AsyncSelector,
-    get,
-  };
-}
-
-export function createSelector<Value>(
-  selectorDefinition: SelectorDefinition<Value>,
+export function createSelector<Value, Update>(
+  selectorDefinition:
+    | SelectorDefinition<Value>
+    | MutatableSelectorDefinition<Value, Update>,
   stateAccess: InternalStateAccess,
-  useId: symbol,
+  usageId: symbol,
   report?: ErrorReporter
-): Selector<Value> {
-  const dependencies = new Set<ReadonlyAsyncStateValue<any>>();
+):
+  | ReadOnlyState<Value | EMPTY_TYPE>
+  | MutatableState<Value | EMPTY_TYPE, Update> {
+  const dependencies = new Set<ReadonlyStateValue<any>>();
 
   function getSourceSubscribing<Value>(
     definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
   ) {
-    const value$ = stateAccess.getSource(definition, useId);
+    const value$ = stateAccess.getSource(definition, usageId);
     if (!dependencies.has(value$)) {
       dependencies.add(value$);
     }
     return value$;
   }
 
-  const subscribingStateAccess: SyncStateReadAccess = {
+  const subscribingStateAccess: StateReadAccess = {
     getSource: getSourceSubscribing,
+    getAsync: function getAsync<Value>(
+      definition: StateDefinition<Value, any>
+    ) {
+      return stateAccess.getAsync(definition, usageId);
+    },
     get: function get<Value>(
       definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
     ) {
@@ -83,111 +105,71 @@ export function createSelector<Value>(
     },
   };
 
-  const publicStateAccess = createPublicSyncStateReadAccess(stateAccess, useId);
+  const publicStateAccess = createPublicStateReadAccess(stateAccess, usageId);
 
-  const initialValue = selectorDefinition.get(subscribingStateAccess);
+  const initialValue = selectorDefinition.read(subscribingStateAccess);
 
-  const value$ = new BehaviorSubject(initialValue);
+  const value$ = new BehaviorSubject(
+    isPromise(initialValue) || isObservable(initialValue)
+      ? EMPTY_VALUE
+      : initialValue
+  );
+  const onError = reportError(report);
 
   function useValue() {
-    const [state, setState] = useState(() => value$.value);
-
     useEffect(() => {
-      const subscription = merge(...dependencies).subscribe(
-        () => {
-          const nextValue = selectorDefinition.get(publicStateAccess);
-          setState(nextValue);
-        },
-        (error) =>
-          reportError(report)(error, `Exception in selector value stream`)
-      );
+      const subscription = merge(...dependencies)
+        .pipe(
+          map(() => selectorDefinition.read(publicStateAccess)),
+          mergeMap((value) => {
+            if (isObservable(value)) {
+              return value;
+            }
+            if (isPromise(value)) {
+              return from(value);
+            }
+            return of(value as Value);
+          })
+        )
+        .subscribe(
+          (nextValue: Value) => {
+            value$.next(nextValue);
+          },
+          (error) =>
+            reportError(report)(error, `Exception in selector value stream`)
+        );
 
       return () => subscription.unsubscribe();
     }, []);
 
-    return state;
+    return useObservablueValue(value$, onError);
+  }
+
+  let dispatchUpdate: undefined | ((change: Update) => void) = undefined;
+
+  if (Object.prototype.hasOwnProperty.call(selectorDefinition, 'write')) {
+    const publicStateAccess = createPublicStateWriteAccess(
+      stateAccess,
+      usageId
+    );
+
+    dispatchUpdate = function dispatchUpdate(change: Update) {
+      (selectorDefinition as MutatableSelectorDefinition<Value, Update>).write(
+        publicStateAccess,
+        change
+      );
+    };
+    return {
+      useValue,
+      value$,
+      key: selectorDefinition.key,
+      dispatchUpdate,
+    };
   }
 
   return {
     useValue,
     value$,
-    type: StateType.Selector,
-    key: selectorDefinition.key,
-  };
-}
-
-export function createMutableSelector<Value, UpdateEvent>(
-  selectorDefinition: MutatableSelectorDefinition<Value, UpdateEvent>,
-  stateAccess: InternalStateAccess,
-  useId: symbol,
-  report?: ErrorReporter
-): MutatableSelector<Value, UpdateEvent> {
-  const selector = createSelector(
-    {
-      ...selectorDefinition,
-      type: StateType.Selector,
-    },
-    stateAccess,
-    useId,
-    report
-  );
-
-  const publicStateAccess = createPublicStateWriteAccess(stateAccess, useId);
-
-  function dispatchUpdate(change: UpdateEvent) {
-    selectorDefinition.set(publicStateAccess, change);
-  }
-
-  function useState() {
-    const value = selector.useValue();
-    return [value, dispatchUpdate] as const;
-  }
-
-  return {
-    ...selector,
-    type: StateType.MutatableSelector,
-    dispatchUpdate,
-    useState,
-  };
-}
-
-export function createAsyncSelector<Value>(
-  selectorDefinition: AsyncSelectorDefinition<Value>,
-  stateAccess: InternalStateAccess,
-  useId: symbol,
-  report?: ErrorReporter
-): AsyncSelector<Value> {
-  const publicStateAccess = createPublicAsyncStateReadAccess(
-    stateAccess,
-    useId
-  );
-
-  const value$ = from(selectorDefinition.get(publicStateAccess)).pipe(
-    startWith(EMPTY_VALUE)
-  );
-
-  function useValue() {
-    const [state, setState] = useState<Value | EMPTY_TYPE>(() => EMPTY_VALUE);
-
-    useEffect(() => {
-      const subscription = value$.subscribe(
-        (nextValue) => {
-          setState(nextValue);
-        },
-        (error) =>
-          reportError(report)(error, `Exception in selector  value stream`)
-      );
-
-      return () => subscription.unsubscribe();
-    }, []);
-
-    return state;
-  }
-
-  return {
-    useValue,
-    value$,
-    type: StateType.AsyncSelector,
     key: selectorDefinition.key,
   };
 }

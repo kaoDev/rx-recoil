@@ -1,23 +1,26 @@
 import {
-  AtomDefinition,
   InternalStateAccess,
-  SelectorDefinition,
+  MutatableStateDefinition,
   StateDefinition,
   StateReadAccess,
   StateWriteAccess,
-  SyncStateReadAccess,
 } from './types';
 
-export function createPublicSyncStateReadAccess(
+export function createPublicStateReadAccess(
   stateAccess: InternalStateAccess,
-  useId: symbol
+  usageId: symbol
 ) {
-  const publicStateAccess: SyncStateReadAccess = {
-    getSource: (definition) => stateAccess.getSource(definition, useId),
-    get: function get<Value>(
-      definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
+  const publicStateAccess: StateReadAccess = {
+    getSource: function getSource<Value>(
+      definition: StateDefinition<Value, unknown>
     ) {
-      const value$ = stateAccess.getSource(definition, useId);
+      return stateAccess.getSource<Value>(definition, usageId);
+    },
+    getAsync: function get<Value>(definition: StateDefinition<Value, unknown>) {
+      return stateAccess.getAsync(definition, usageId);
+    },
+    get: function get<Value>(definition: StateDefinition<Value, unknown>) {
+      const value$ = stateAccess.getSource<Value>(definition, usageId);
       return value$.value;
     },
   };
@@ -27,26 +30,16 @@ export function createPublicSyncStateReadAccess(
 
 export function createPublicStateWriteAccess(
   stateAccess: InternalStateAccess,
-  useId: symbol
+  usageId: symbol
 ) {
-  const publicReadAccess = createPublicSyncStateReadAccess(stateAccess, useId);
+  const publicReadAccess = createPublicStateReadAccess(stateAccess, usageId);
   const publicStateAccess: StateWriteAccess = {
     ...publicReadAccess,
-    set: (definition, change) => {
-      stateAccess.set(definition, useId, change);
-    },
-  };
-
-  return publicStateAccess;
-}
-
-export function createPublicAsyncStateReadAccess(
-  stateAccess: InternalStateAccess,
-  useId: symbol
-) {
-  const publicStateAccess: StateReadAccess = {
-    get: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      return stateAccess.getFull(definition, useId);
+    set: function set<Value, UpdateEvent>(
+      definition: MutatableStateDefinition<Value, UpdateEvent>,
+      change: UpdateEvent
+    ) {
+      stateAccess.set(definition, usageId, change);
     },
   };
 

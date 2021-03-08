@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { BehaviorSubject } from 'rxjs';
+import { useObservablueValue } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
-import { Atom, AtomDefinition, StateType, UpdateFunction } from './types';
+import {
+  AtomDefinition,
+  MutatableState,
+  StateType,
+  UpdateFunction,
+} from './types';
 
 const identity: UpdateFunction<any, any> = (_, change) => change;
 
@@ -38,33 +44,16 @@ export function createAtom<Value, UpdateEvent = Value>(
     }
   }
 
-  function useAtomState() {
-    const [state, setState] = useState(() => value$.value);
-
-    useEffect(() => {
-      const subscription = value$.subscribe(
-        (value) => {
-          setState(value);
-        },
-        (error) => reportError(report)(error, `Exception in atom value stream`)
-      );
-
-      return () => subscription.unsubscribe();
-    }, []);
-
-    return [state, dispatchUpdate] as const;
-  }
+  const onError = reportError(report);
 
   function useValue() {
-    return useAtomState()[0];
+    return useObservablueValue(value$, onError);
   }
 
-  const atom: Atom<Value, UpdateEvent> = {
-    useState: useAtomState,
+  const atom: MutatableState<Value, UpdateEvent> = {
     useValue,
     dispatchUpdate,
     value$,
-    type: StateType.Atom,
     key: atomDefinition.key,
     debugKey: atomDefinition.debugKey,
   };
