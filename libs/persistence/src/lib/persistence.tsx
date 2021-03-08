@@ -1,6 +1,7 @@
 import { Subject } from 'rxjs';
 import { distinctUntilChanged, scan, skipUntil } from 'rxjs/operators';
 import { atom, EMPTY_TYPE, EMPTY_VALUE } from '@rx-recoil/core';
+import type { AtomDefinition } from '@rx-recoil/core';
 
 type StoredValue = string | null;
 
@@ -59,7 +60,10 @@ export function persistedAtom<Value>({
   persistencePrefix = '__RX_RECOIL_STATE',
   report,
   debugKey,
-}: PersistenceOptions<Value>) {
+}: PersistenceOptions<Value>): AtomDefinition<
+  Value | typeof EMPTY_VALUE,
+  Value
+> {
   const storageKey = `${persistencePrefix}:${key}`;
 
   async function writeValueToStorage(newValue: Value) {
