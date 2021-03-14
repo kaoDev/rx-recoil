@@ -7,7 +7,7 @@ import {
   Observable,
   of,
 } from 'rxjs';
-import { map, mergeMap, tap } from 'rxjs/operators';
+import { map, mergeMap } from 'rxjs/operators';
 import { isPromise, useObservablueValue } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
@@ -18,13 +18,12 @@ import {
   AtomDefinition,
   EMPTY_TYPE,
   EMPTY_VALUE,
+  InternalRegisteredState,
   InternalStateAccess,
   MutatableSelectorDefinition,
-  MutatableState,
-  ReadOnlyState,
-  ReadonlyStateValue,
+  ReadOnlyStateDefinition,
+  RegisteredState,
   SelectorDefinition,
-  StateDefinition,
   StateReadAccess,
   StateType,
   StateWriteAccess,
@@ -75,33 +74,30 @@ export function createSelector<Value, Update>(
   stateAccess: InternalStateAccess,
   usageId: symbol,
   report?: ErrorReporter
-):
-  | ReadOnlyState<Value | EMPTY_TYPE>
-  | MutatableState<Value | EMPTY_TYPE, Update> {
-  const dependencies = new Set<ReadonlyStateValue<any>>();
+): InternalRegisteredState<Value | EMPTY_TYPE, Update> {
+  const dependencies = new Set<RegisteredState<unknown, unknown>>();
 
-  function getSourceSubscribing<Value>(
+  function getStateSubscribing<Value>(
     definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
   ) {
-    const value$ = stateAccess.getSource(definition, usageId);
-    if (!dependencies.has(value$)) {
-      dependencies.add(value$);
+    const state = stateAccess.getStateObject(definition, usageId);
+    if (!dependencies.has(state)) {
+      dependencies.add(state);
     }
-    return value$;
+    return state;
   }
 
   const subscribingStateAccess: StateReadAccess = {
-    getSource: getSourceSubscribing,
     getAsync: function getAsync<Value>(
-      definition: StateDefinition<Value, any>
+      definition: ReadOnlyStateDefinition<Value>
     ) {
-      return stateAccess.getAsync(definition, usageId);
+      return getStateSubscribing(definition);
     },
     get: function get<Value>(
       definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
     ) {
-      const value$ = getSourceSubscribing(definition);
-      return value$.value;
+      const state = getStateSubscribing(definition);
+      return state.value$.value;
     },
   };
 
@@ -118,7 +114,9 @@ export function createSelector<Value, Update>(
 
   function useValue() {
     useEffect(() => {
-      const subscription = merge(...dependencies)
+      const subscription = merge(
+        ...Array.from(dependencies).map((state) => state.value$)
+      )
         .pipe(
           map(() => selectorDefinition.read(publicStateAccess)),
           mergeMap((value) => {
@@ -139,7 +137,9 @@ export function createSelector<Value, Update>(
             reportError(report)(error, `Exception in selector value stream`)
         );
 
-      return () => subscription.unsubscribe();
+      return () => {
+        subscription.unsubscribe();
+      };
     }, []);
 
     return useObservablueValue(value$, onError);
@@ -159,17 +159,24 @@ export function createSelector<Value, Update>(
         change
       );
     };
+
     return {
-      useValue,
-      value$,
-      key: selectorDefinition.key,
-      dispatchUpdate,
+      state: {
+        useValue,
+        value$,
+        key: selectorDefinition.key,
+        dispatchUpdate,
+      },
+      dependencies,
     };
   }
 
   return {
-    useValue,
-    value$,
-    key: selectorDefinition.key,
+    state: {
+      useValue,
+      value$,
+      key: selectorDefinition.key,
+    },
+    dependencies,
   };
 }

@@ -144,7 +144,7 @@ describe('Persistence atom', () => {
       );
     };
 
-    const { baseElement, rerender, findByText } = render(
+    const { baseElement, findByText } = render(
       <StateRoot>
         <Suspense fallback={'loading'}>
           <TestComponent />

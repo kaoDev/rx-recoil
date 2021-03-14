@@ -11,17 +11,11 @@ export function createPublicStateReadAccess(
   usageId: symbol
 ) {
   const publicStateAccess: StateReadAccess = {
-    getSource: function getSource<Value>(
-      definition: StateDefinition<Value, unknown>
-    ) {
-      return stateAccess.getSource<Value>(definition, usageId);
-    },
     getAsync: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      return stateAccess.getAsync(definition, usageId);
+      return stateAccess.getStateObject(definition, usageId);
     },
     get: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      const value$ = stateAccess.getSource<Value>(definition, usageId);
-      return value$.value;
+      return stateAccess.get<Value>(definition, usageId);
     },
   };
 

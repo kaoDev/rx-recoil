@@ -16,38 +16,55 @@ import {
   AtomDefinition,
   EMPTY_TYPE,
   EMPTY_VALUE,
+  InternalRegisteredState,
   InternalStateAccess,
   MutatableSelectorDefinition,
   MutatableState,
   MutatableStateDefinition,
   ReadOnlyState,
-  RegisteredState,
   SelectorDefinition,
   StateDefinition,
   StateType,
 } from './types';
 
-function cleanupStateObject(
-  stateMap: Map<symbol, SharedState>,
-  usageMap: Map<symbol, Set<symbol>>,
-  stateKey: symbol,
-  usageId: symbol
-) {
-  const state = stateMap.get(stateKey);
+function cleanupStateObject({
+  stateMap,
+  usageMap,
+  usageId,
+  stateKey,
+}: {
+  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>;
+  usageMap: Map<symbol, Set<symbol>>;
+  stateKey: symbol;
+  usageId: symbol;
+}) {
+  const stateObject = stateMap.get(stateKey);
   const dependencies = usageMap.get(stateKey);
 
-  if (state && dependencies) {
-    dependencies.delete(usageId);
+  if (stateObject) {
+    dependencies?.delete(usageId);
+    if (stateObject.dependencies) {
+      for (const dep of stateObject.dependencies) {
+        cleanupStateObject({
+          stateMap,
+          usageMap,
+          usageId,
+          stateKey: dep.key,
+        });
+      }
+    }
 
-    if (dependencies.size === 0) {
-      state.onUnmount?.();
+    if (dependencies === undefined || dependencies.size === 0) {
+      stateObject.onUnmount?.();
       stateMap.delete(stateKey);
     }
   }
 }
 
-function addStateObject<StateObject extends RegisteredState<any, any>>(
-  stateMap: Map<symbol, SharedState>,
+function addStateObject<
+  StateObject extends InternalRegisteredState<unknown, unknown>
+>(
+  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>,
   stateKey: symbol,
   createStateObject: () => StateObject,
   onMount?: () => void
@@ -55,16 +72,14 @@ function addStateObject<StateObject extends RegisteredState<any, any>>(
   let state = stateMap.get(stateKey);
 
   if (!state) {
-    state = {
-      state: createStateObject(),
-    };
+    state = createStateObject();
 
     stateMap.set(stateKey, state);
 
     onMount?.();
   }
 
-  return state.state as StateObject;
+  return state as StateObject;
 }
 
 function registerStateUsage(
@@ -81,7 +96,7 @@ function registerStateUsage(
 }
 
 function createAddState(
-  stateMap: Map<symbol, SharedState>,
+  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>,
   usageMap: Map<symbol, Set<symbol>>,
   stateAcces: InternalStateAccess,
   report?: ErrorReporter
@@ -101,12 +116,12 @@ function createAddState(
           if (sharedStateObject) {
             sharedStateObject.onUnmount = async () => {
               sharedStateObject.onUnmount = undefined;
-              cleanupStateObject(
+              cleanupStateObject({
                 stateMap,
                 usageMap,
-                definition.key,
-                definition.key
-              );
+                usageId: definition.key,
+                stateKey: definition.key,
+              });
               if (cleanUp) {
                 const mountingCleanup = await cleanUp;
                 if (mountingCleanup) mountingCleanup();
@@ -146,55 +161,32 @@ function createAddState(
   return addState;
 }
 
-interface SharedState {
-  state: RegisteredState<any, any>;
-  onUnmount?: () => void;
-}
-
 export function createStateContextValue(report?: ErrorReporter) {
-  const stateMap = new Map<symbol, SharedState>();
+  const stateMap = new Map<symbol, InternalRegisteredState<unknown, unknown>>();
   const usageMap = new Map<symbol, Set<symbol>>();
 
-  function getSource<Value>(
-    definition: StateDefinition<Value, unknown>,
-    usageId: symbol
-  ) {
-    const state = contextGetter<Value, unknown>(
-      definition,
-      usageId
-    ) as ReadOnlyState<Value>;
-    return state.value$;
-  }
-
   const internalStateAcces: InternalStateAccess = {
-    getSource,
-    getAsync: function getFull<Value>(
+    getStateObject: function getStateObject<Value>(
       definition: StateDefinition<Value, unknown>,
       usageId: symbol
     ) {
-      const state = contextGetter<Value, unknown>(
-        definition,
-        usageId
-      ) as ReadOnlyState<Value>;
-      return state;
+      const { state } = contextGetter<Value, unknown>(definition, usageId);
+      return state as ReadOnlyState<Value>;
     },
     get: function get<Value>(
       definition: StateDefinition<Value, unknown>,
       usageId: symbol
     ) {
-      const value$ = getSource(definition, usageId);
-      return value$.value;
+      const { state } = contextGetter<Value, unknown>(definition, usageId);
+      return (state as ReadOnlyState<Value>).value$.value;
     },
     set: function set<Value, UpdateEvent>(
       definition: MutatableStateDefinition<Value, UpdateEvent>,
       usageId: symbol,
       change: UpdateEvent
     ) {
-      const state = contextGetter(definition, usageId) as MutatableState<
-        Value,
-        UpdateEvent
-      >;
-      state.dispatchUpdate(change);
+      const { state } = contextGetter(definition, usageId);
+      (state as MutatableState<Value, UpdateEvent>).dispatchUpdate(change);
     },
   };
 
@@ -208,7 +200,11 @@ export function createStateContextValue(report?: ErrorReporter) {
   return contextGetter;
 }
 
-export const stateContext = createContext(createStateContextValue());
+type StateRootContextValueType = ReturnType<typeof createStateContextValue>;
+
+// initialize with null to enforce usage of StateRoot provider with controlled context
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+const stateContext = createContext(null! as StateRootContextValueType);
 
 export function StateRoot({
   children,
@@ -219,12 +215,12 @@ export function StateRoot({
   report?: ErrorReporter;
   context?: ReturnType<typeof createStateContextValue>;
 }) {
-  const [contextValue] = useState(
-    () => context ?? createStateContextValue(report)
+  const [fallbackContextValue] = useState(() =>
+    createStateContextValue(report)
   );
 
   return (
-    <stateContext.Provider value={contextValue}>
+    <stateContext.Provider value={context ?? fallbackContextValue}>
       {children}
     </stateContext.Provider>
   );
@@ -242,6 +238,9 @@ export function useAtomicState<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>
 ) {
   const getStateObject = useContext(stateContext);
+  if (!getStateObject) {
+    throw new Error('rx-recoil StateRoot context is missing');
+  }
   const usageId = useRef(Symbol(`${identifier.debugKey}`));
 
   useEffect(() => {
@@ -249,16 +248,16 @@ export function useAtomicState<Value, UpdateEvent>(
     registerStateUsage(getStateObject.usageMap, identifier.key, currentUsageId);
 
     return () => {
-      cleanupStateObject(
-        getStateObject.stateMap,
-        getStateObject.usageMap,
-        identifier.key,
-        currentUsageId
-      );
+      cleanupStateObject({
+        stateMap: getStateObject.stateMap,
+        usageMap: getStateObject.usageMap,
+        stateKey: identifier.key,
+        usageId: currentUsageId,
+      });
     };
   }, [getStateObject, identifier, usageId]);
 
-  return getStateObject(identifier, usageId.current);
+  return getStateObject(identifier, usageId.current).state;
 }
 
 export function useAtom<Value>(

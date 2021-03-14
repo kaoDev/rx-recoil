@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
 import { BehaviorSubject } from 'rxjs';
 import { useObservablueValue } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
   AtomDefinition,
+  InternalRegisteredState,
   MutatableState,
   StateType,
   UpdateFunction,
 } from './types';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const identity: UpdateFunction<any, any> = (_, change) => change;
 
 export function atom<Value, UpdateEvent = Value>(
@@ -33,7 +34,7 @@ export function atom<Value, UpdateEvent = Value>(
 export function createAtom<Value, UpdateEvent = Value>(
   atomDefinition: AtomDefinition<Value, UpdateEvent>,
   report?: ErrorReporter
-) {
+): InternalRegisteredState<Value, UpdateEvent> {
   const value$ = new BehaviorSubject(atomDefinition.initialValue);
 
   function dispatchUpdate(change: UpdateEvent) {
@@ -58,5 +59,5 @@ export function createAtom<Value, UpdateEvent = Value>(
     debugKey: atomDefinition.debugKey,
   };
 
-  return atom;
+  return { state: atom };
 }

@@ -10,14 +10,10 @@ export type ReadonlyStateValue<Value> = Observable<Value> & {
 };
 
 export interface InternalStateAccess {
-  getSource<Value>(
+  getStateObject<Value, UpdateEvent>(
     definition: StateDefinition<Value, any>,
     useId: symbol
-  ): ReadonlyStateValue<Value>;
-  getAsync<Value>(
-    definition: StateDefinition<Value, any>,
-    useId: symbol
-  ): ReadOnlyState<Value>;
+  ): RegisteredState<Value, UpdateEvent>;
   get<Value>(definition: StateDefinition<Value, any>, useId: symbol): Value;
   set<Value, UpdateEvent>(
     definition: MutatableStateDefinition<Value, UpdateEvent>,
@@ -27,9 +23,6 @@ export interface InternalStateAccess {
 }
 
 export interface StateReadAccess {
-  getSource<Value>(
-    definition: StateDefinition<Value, any>
-  ): ReadonlyStateValue<Value>;
   getAsync<Value>(
     definition: StateDefinition<Value, any>
   ): ReadOnlyState<Value>;
@@ -108,3 +101,9 @@ export type StateDefinition<Value, UpdateEvent> =
 export type RegisteredState<Value, UpdateEvent> =
   | ReadOnlyState<Value>
   | MutatableState<Value, UpdateEvent>;
+
+export type InternalRegisteredState<Value, UpdateEvent> = {
+  state: RegisteredState<Value, UpdateEvent>;
+  dependencies?: Set<RegisteredState<unknown, unknown>>;
+  onUnmount?: () => void;
+};
