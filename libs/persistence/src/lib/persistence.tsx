@@ -87,7 +87,7 @@ export function persistedAtom<Value>({
       persistQueue.next(newValue);
       return newValue;
     },
-    debugKey: `${debugKey}:state`,
+    debugKey,
   });
 
   state.onMount = async ({ set, get }) => {

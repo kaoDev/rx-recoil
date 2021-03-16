@@ -23,7 +23,7 @@ export function atom<Value, UpdateEvent = Value>(
   } = {}
 ): AtomDefinition<Value, UpdateEvent> {
   return {
-    key: Symbol(),
+    key: Symbol('ATO:' + debugKey),
     initialValue,
     type: StateType.Atom,
     update,
@@ -59,5 +59,5 @@ export function createAtom<Value, UpdateEvent = Value>(
     debugKey: atomDefinition.debugKey,
   };
 
-  return { state: atom };
+  return { state: atom, refs: new Set() };
 }

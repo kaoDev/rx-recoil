@@ -1,14 +1,19 @@
-import { StateRoot } from '@rx-recoil/core';
-import React, { useState } from 'react';
+import { createStateContextValue, StateRoot } from '@rx-recoil/core';
+import React, { useEffect, useState } from 'react';
 import styles from './app.module.css';
 import { Counter } from './Counter';
 import { Temperature } from './Temperature';
 
+const stateContext = createStateContextValue();
 export function App() {
   const [visibleSample, setVisibleSample] = useState('counter');
 
+  useEffect(() => {
+    console.log('stateContext.stateMap', stateContext.stateMap);
+  }, [visibleSample]);
+
   return (
-    <StateRoot>
+    <StateRoot context={stateContext}>
       <div className={styles.app}>
         <header className="flex">
           <h1>Welcome to rx-recoil!</h1>
@@ -24,7 +29,7 @@ export function App() {
                 }}
                 value="counter"
                 name="sample"
-              />{' '}
+              />
               Counter
             </label>
             <label>
@@ -36,7 +41,7 @@ export function App() {
                 }}
                 value="temperature"
                 name="sample"
-              />{' '}
+              />
               Temperature
             </label>
           </section>

@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import {
   BehaviorSubject,
   from,
@@ -22,7 +21,6 @@ import {
   InternalStateAccess,
   MutatableSelectorDefinition,
   ReadOnlyStateDefinition,
-  RegisteredState,
   SelectorDefinition,
   StateReadAccess,
   StateType,
@@ -72,23 +70,26 @@ export function createSelector<Value, Update>(
     | SelectorDefinition<Value>
     | MutatableSelectorDefinition<Value, Update>,
   stateAccess: InternalStateAccess,
-  usageId: symbol,
   report?: ErrorReporter
 ): InternalRegisteredState<Value | EMPTY_TYPE, Update> {
-  const dependencies = new Set<RegisteredState<unknown, unknown>>();
+  const dependencies = new Set<InternalRegisteredState<unknown, unknown>>();
 
   function getStateSubscribing<Value>(
     definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
   ) {
-    const state = stateAccess.getStateObject(definition, usageId);
+    const state = stateAccess.getStateObject(
+      definition,
+      selectorDefinition.key,
+      true
+    );
     if (!dependencies.has(state)) {
       dependencies.add(state);
     }
-    return state;
+    return state.state;
   }
 
   const subscribingStateAccess: StateReadAccess = {
-    getAsync: function getAsync<Value>(
+    getStateObject: function getStateObject<Value>(
       definition: ReadOnlyStateDefinition<Value>
     ) {
       return getStateSubscribing(definition);
@@ -101,7 +102,10 @@ export function createSelector<Value, Update>(
     },
   };
 
-  const publicStateAccess = createPublicStateReadAccess(stateAccess, usageId);
+  const publicStateAccess = createPublicStateReadAccess(
+    stateAccess,
+    selectorDefinition.key
+  );
 
   const initialValue = selectorDefinition.read(subscribingStateAccess);
 
@@ -111,37 +115,34 @@ export function createSelector<Value, Update>(
       : initialValue
   );
   const onError = reportError(report);
+  const subscription = merge(
+    ...Array.from(dependencies).map(({ state }) => state.value$)
+  )
+    .pipe(
+      map(() => selectorDefinition.read(publicStateAccess)),
+      mergeMap((value) => {
+        if (isObservable(value)) {
+          return value;
+        }
+        if (isPromise(value)) {
+          return from(value);
+        }
+        return of(value as Value);
+      })
+    )
+    .subscribe(
+      (nextValue: Value) => {
+        value$.next(nextValue);
+      },
+      (error) =>
+        reportError(report)(error, `Exception in selector value stream`)
+    );
+
+  function onUnmount() {
+    subscription.unsubscribe();
+  }
 
   function useValue() {
-    useEffect(() => {
-      const subscription = merge(
-        ...Array.from(dependencies).map((state) => state.value$)
-      )
-        .pipe(
-          map(() => selectorDefinition.read(publicStateAccess)),
-          mergeMap((value) => {
-            if (isObservable(value)) {
-              return value;
-            }
-            if (isPromise(value)) {
-              return from(value);
-            }
-            return of(value as Value);
-          })
-        )
-        .subscribe(
-          (nextValue: Value) => {
-            value$.next(nextValue);
-          },
-          (error) =>
-            reportError(report)(error, `Exception in selector value stream`)
-        );
-
-      return () => {
-        subscription.unsubscribe();
-      };
-    }, []);
-
     return useObservablueValue(value$, onError);
   }
 
@@ -150,7 +151,7 @@ export function createSelector<Value, Update>(
   if (Object.prototype.hasOwnProperty.call(selectorDefinition, 'write')) {
     const publicStateAccess = createPublicStateWriteAccess(
       stateAccess,
-      usageId
+      selectorDefinition.key
     );
 
     dispatchUpdate = function dispatchUpdate(change: Update) {
@@ -166,8 +167,11 @@ export function createSelector<Value, Update>(
         value$,
         key: selectorDefinition.key,
         dispatchUpdate,
+        debugKey: selectorDefinition.debugKey,
       },
       dependencies,
+      onUnmount,
+      refs: new Set(),
     };
   }
 
@@ -176,7 +180,10 @@ export function createSelector<Value, Update>(
       useValue,
       value$,
       key: selectorDefinition.key,
+      debugKey: selectorDefinition.debugKey,
     },
     dependencies,
+    onUnmount,
+    refs: new Set(),
   };
 }

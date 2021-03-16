@@ -3,6 +3,9 @@ import { BehaviorSubject, Observable } from 'rxjs';
 export const EMPTY_VALUE = Symbol('EMPTY_VALUE');
 export type EMPTY_TYPE = typeof EMPTY_VALUE;
 
+export type StateKey = symbol;
+export type UsageKey = symbol;
+
 export type StateValue<Value> = BehaviorSubject<Value>;
 
 export type ReadonlyStateValue<Value> = Observable<Value> & {
@@ -12,18 +15,24 @@ export type ReadonlyStateValue<Value> = Observable<Value> & {
 export interface InternalStateAccess {
   getStateObject<Value, UpdateEvent>(
     definition: StateDefinition<Value, any>,
-    useId: symbol
-  ): RegisteredState<Value, UpdateEvent>;
-  get<Value>(definition: StateDefinition<Value, any>, useId: symbol): Value;
+    usageId: UsageKey,
+    internal: boolean
+  ): InternalRegisteredState<Value, UpdateEvent>;
+  get<Value>(
+    definition: StateDefinition<Value, any>,
+    usageId: UsageKey,
+    internal: boolean
+  ): Value;
   set<Value, UpdateEvent>(
     definition: MutatableStateDefinition<Value, UpdateEvent>,
-    useId: symbol,
-    change: UpdateEvent
+    usageId: UsageKey,
+    change: UpdateEvent,
+    internal: boolean
   ): void;
 }
 
 export interface StateReadAccess {
-  getAsync<Value>(
+  getStateObject<Value>(
     definition: StateDefinition<Value, any>
   ): ReadOnlyState<Value>;
   get<Value>(definition: StateDefinition<Value, any>): Value;
@@ -43,7 +52,7 @@ export enum StateType {
 }
 
 export interface BaseStateDefinition {
-  key: symbol;
+  key: StateKey;
   debugKey?: string;
 }
 
@@ -104,6 +113,7 @@ export type RegisteredState<Value, UpdateEvent> =
 
 export type InternalRegisteredState<Value, UpdateEvent> = {
   state: RegisteredState<Value, UpdateEvent>;
-  dependencies?: Set<RegisteredState<unknown, unknown>>;
+  dependencies?: Set<InternalRegisteredState<unknown, unknown>>;
   onUnmount?: () => void;
+  refs: Set<UsageKey>;
 };

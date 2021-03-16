@@ -4,18 +4,21 @@ import {
   StateDefinition,
   StateReadAccess,
   StateWriteAccess,
+  UsageKey,
 } from './types';
 
 export function createPublicStateReadAccess(
   stateAccess: InternalStateAccess,
-  usageId: symbol
+  usageId: UsageKey
 ) {
   const publicStateAccess: StateReadAccess = {
-    getAsync: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      return stateAccess.getStateObject(definition, usageId);
+    getStateObject: function get<Value>(
+      definition: StateDefinition<Value, unknown>
+    ) {
+      return stateAccess.getStateObject(definition, usageId, true).state;
     },
     get: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      return stateAccess.get<Value>(definition, usageId);
+      return stateAccess.get<Value>(definition, usageId, true);
     },
   };
 
@@ -24,7 +27,7 @@ export function createPublicStateReadAccess(
 
 export function createPublicStateWriteAccess(
   stateAccess: InternalStateAccess,
-  usageId: symbol
+  usageId: UsageKey
 ) {
   const publicReadAccess = createPublicStateReadAccess(stateAccess, usageId);
   const publicStateAccess: StateWriteAccess = {
@@ -33,7 +36,7 @@ export function createPublicStateWriteAccess(
       definition: MutatableStateDefinition<Value, UpdateEvent>,
       change: UpdateEvent
     ) {
-      stateAccess.set(definition, usageId, change);
+      stateAccess.set(definition, usageId, change, true);
     },
   };
 

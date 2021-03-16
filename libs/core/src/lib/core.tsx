@@ -3,7 +3,6 @@ import React, {
   ReactNode,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from 'react';
 import type { Observable } from 'rxjs';
@@ -24,178 +23,174 @@ import {
   ReadOnlyState,
   SelectorDefinition,
   StateDefinition,
+  StateKey,
   StateType,
+  UsageKey,
 } from './types';
 
-function cleanupStateObject({
-  stateMap,
-  usageMap,
+function cleanupUsage({
+  rootState,
   usageId,
-  stateKey,
+  stateMap,
 }: {
-  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>;
-  usageMap: Map<symbol, Set<symbol>>;
-  stateKey: symbol;
-  usageId: symbol;
+  rootState: InternalRegisteredState<unknown, unknown>;
+  stateMap: Map<StateKey, InternalRegisteredState<unknown, unknown>>;
+  usageId: UsageKey;
 }) {
-  const stateObject = stateMap.get(stateKey);
-  const dependencies = usageMap.get(stateKey);
+  rootState.refs.delete(usageId);
 
-  if (stateObject) {
-    dependencies?.delete(usageId);
-    if (stateObject.dependencies) {
-      for (const dep of stateObject.dependencies) {
-        cleanupStateObject({
-          stateMap,
-          usageMap,
-          usageId,
-          stateKey: dep.key,
-        });
-      }
-    }
-
-    if (dependencies === undefined || dependencies.size === 0) {
-      stateObject.onUnmount?.();
-      stateMap.delete(stateKey);
+  if (rootState.refs.size === 0 && rootState.dependencies) {
+    for (const dependency of rootState.dependencies) {
+      cleanupUsage({
+        rootState: dependency,
+        usageId: rootState.state.key,
+        stateMap,
+      });
     }
   }
-}
 
-function addStateObject<
-  StateObject extends InternalRegisteredState<unknown, unknown>
->(
-  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>,
-  stateKey: symbol,
-  createStateObject: () => StateObject,
-  onMount?: () => void
-) {
-  let state = stateMap.get(stateKey);
-
-  if (!state) {
-    state = createStateObject();
-
-    stateMap.set(stateKey, state);
-
-    onMount?.();
+  if (rootState.refs.size === 0) {
+    rootState.onUnmount?.();
+    stateMap.delete(rootState.state.key);
   }
-
-  return state as StateObject;
 }
 
 function registerStateUsage(
-  usageMap: Map<symbol, Set<symbol>>,
-  stateKey: symbol,
-  usageId: symbol
+  stateObject: InternalRegisteredState<unknown, unknown>,
+  usageId: UsageKey
 ) {
-  let dependencies = usageMap.get(stateKey);
-  if (!dependencies) {
-    dependencies = new Set();
-    usageMap.set(stateKey, dependencies);
+  if (usageId !== stateObject.state.key) {
+    stateObject.refs.add(usageId);
   }
-  dependencies.add(usageId);
 }
 
-function createAddState(
-  stateMap: Map<symbol, InternalRegisteredState<unknown, unknown>>,
-  usageMap: Map<symbol, Set<symbol>>,
+function getStateObject<Value, UpdateEvent>(
+  stateMap: Map<StateKey, InternalRegisteredState<unknown, unknown>>,
+  definition: StateDefinition<Value, UpdateEvent>,
+  createStateObject: () => InternalRegisteredState<Value, UpdateEvent>,
+  stateAcces: InternalStateAccess
+): InternalRegisteredState<Value, UpdateEvent> {
+  let state = stateMap.get(definition.key);
+
+  if (!state) {
+    state = createStateObject();
+    stateMap.set(definition.key, state);
+
+    if (definition.onMount) {
+      const publicStateAccess = createPublicStateWriteAccess(
+        stateAcces,
+        state.state.key
+      );
+      const cleanUp = definition.onMount?.(publicStateAccess);
+
+      const sharedStateObject = stateMap.get(definition.key);
+      const originalOnUnmount = sharedStateObject?.onUnmount;
+
+      if (sharedStateObject) {
+        sharedStateObject.onUnmount = async () => {
+          sharedStateObject.onUnmount = undefined;
+          cleanupUsage({
+            rootState: sharedStateObject,
+            usageId: sharedStateObject.state.key,
+            stateMap,
+          });
+          if (cleanUp) {
+            const mountingCleanup = await cleanUp;
+            if (mountingCleanup) mountingCleanup();
+          }
+          originalOnUnmount?.();
+        };
+      }
+    }
+  }
+
+  return state as InternalRegisteredState<Value, UpdateEvent>;
+}
+
+function createGetState(
+  stateMap: Map<StateKey, InternalRegisteredState<unknown, unknown>>,
   stateAcces: InternalStateAccess,
   report?: ErrorReporter
 ) {
-  function addState<Value, UpdateEvent>(
+  function getState<Value, UpdateEvent>(
     definition: StateDefinition<Value, UpdateEvent>,
-    usageId: symbol
-  ) {
-    const onMount = definition.onMount
-      ? () => {
-          const publicStateAccess = createPublicStateWriteAccess(
-            stateAcces,
-            definition.key
-          );
-          const cleanUp = definition.onMount?.(publicStateAccess);
-          const sharedStateObject = stateMap.get(definition.key);
-          if (sharedStateObject) {
-            sharedStateObject.onUnmount = async () => {
-              sharedStateObject.onUnmount = undefined;
-              cleanupStateObject({
-                stateMap,
-                usageMap,
-                usageId: definition.key,
-                stateKey: definition.key,
-              });
-              if (cleanUp) {
-                const mountingCleanup = await cleanUp;
-                if (mountingCleanup) mountingCleanup();
-              }
-            };
-          }
-        }
-      : undefined;
+    usageId: UsageKey,
+    internal: boolean
+  ): InternalRegisteredState<Value, UpdateEvent> {
     switch (definition.type) {
       case StateType.Atom: {
-        const atom = addStateObject(
+        const atom = getStateObject(
           stateMap,
-          definition.key,
+          definition,
           () => createAtom(definition, report),
-          onMount
+          stateAcces
         );
-
+        if (internal) registerStateUsage(atom, usageId);
         return atom;
       }
       case StateType.Selector:
       case StateType.MutatableSelector: {
-        const selector = addStateObject(
+        const selector = getStateObject(
           stateMap,
-          definition.key,
-          () => createSelector(definition, stateAcces, usageId, report),
-          onMount
+          definition,
+          () => createSelector(definition, stateAcces, report),
+          stateAcces
         );
 
-        return selector;
+        if (internal) registerStateUsage(selector, usageId);
+        return selector as InternalRegisteredState<Value, UpdateEvent>;
       }
     }
   }
 
-  addState.stateMap = stateMap;
-  addState.usageMap = usageMap;
+  getState.stateMap = stateMap;
 
-  return addState;
+  return getState;
 }
 
 export function createStateContextValue(report?: ErrorReporter) {
-  const stateMap = new Map<symbol, InternalRegisteredState<unknown, unknown>>();
-  const usageMap = new Map<symbol, Set<symbol>>();
+  const stateMap = new Map<
+    StateKey,
+    InternalRegisteredState<unknown, unknown>
+  >();
 
   const internalStateAcces: InternalStateAccess = {
     getStateObject: function getStateObject<Value>(
       definition: StateDefinition<Value, unknown>,
-      usageId: symbol
+      usageId: UsageKey,
+      internal: boolean
     ) {
-      const { state } = contextGetter<Value, unknown>(definition, usageId);
-      return state as ReadOnlyState<Value>;
+      const state = contextGetter<Value, unknown>(
+        definition,
+        usageId,
+        internal
+      );
+      return state;
     },
     get: function get<Value>(
       definition: StateDefinition<Value, unknown>,
-      usageId: symbol
+      usageId: UsageKey,
+      internal: boolean
     ) {
-      const { state } = contextGetter<Value, unknown>(definition, usageId);
+      const { state } = contextGetter<Value, unknown>(
+        definition,
+        usageId,
+        internal
+      );
       return (state as ReadOnlyState<Value>).value$.value;
     },
     set: function set<Value, UpdateEvent>(
       definition: MutatableStateDefinition<Value, UpdateEvent>,
-      usageId: symbol,
-      change: UpdateEvent
+      usageId: UsageKey,
+      change: UpdateEvent,
+      internal: boolean
     ) {
-      const { state } = contextGetter(definition, usageId);
+      const { state } = contextGetter(definition, usageId, internal);
       (state as MutatableState<Value, UpdateEvent>).dispatchUpdate(change);
     },
   };
 
-  const contextGetter = createAddState(
-    stateMap,
-    usageMap,
-    internalStateAcces,
-    report
-  );
+  const contextGetter = createGetState(stateMap, internalStateAcces, report);
 
   return contextGetter;
 }
@@ -215,8 +210,8 @@ export function StateRoot({
   report?: ErrorReporter;
   context?: ReturnType<typeof createStateContextValue>;
 }) {
-  const [fallbackContextValue] = useState(() =>
-    createStateContextValue(report)
+  const [fallbackContextValue] = useState(
+    () => context ?? createStateContextValue(report)
   );
 
   return (
@@ -241,23 +236,30 @@ export function useAtomicState<Value, UpdateEvent>(
   if (!getStateObject) {
     throw new Error('rx-recoil StateRoot context is missing');
   }
-  const usageId = useRef(Symbol(`${identifier.debugKey}`));
+  const [usageId] = useState(() => Symbol(`usage:${identifier.debugKey}`));
+
+  const [stateReference, setStateReference] = useState(() =>
+    getStateObject(identifier, usageId, false)
+  );
 
   useEffect(() => {
-    const currentUsageId = usageId.current;
-    registerStateUsage(getStateObject.usageMap, identifier.key, currentUsageId);
+    const registeredStateObject = getStateObject(identifier, usageId, false);
+    registerStateUsage(registeredStateObject, usageId);
+
+    if (registeredStateObject !== stateReference) {
+      setStateReference(stateReference);
+    }
 
     return () => {
-      cleanupStateObject({
+      cleanupUsage({
+        rootState: registeredStateObject,
+        usageId,
         stateMap: getStateObject.stateMap,
-        usageMap: getStateObject.usageMap,
-        stateKey: identifier.key,
-        usageId: currentUsageId,
       });
     };
-  }, [getStateObject, identifier, usageId]);
+  }, [getStateObject, identifier, usageId, stateReference]);
 
-  return getStateObject(identifier, usageId.current).state;
+  return stateReference.state;
 }
 
 export function useAtom<Value>(

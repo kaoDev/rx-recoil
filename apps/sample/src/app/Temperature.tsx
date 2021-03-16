@@ -14,7 +14,7 @@ function celsiusToFahrenheit(celsius: number) {
   return (celsius * 9) / 5 + 32;
 }
 
-const tempCelsius = atom<number, number>(0);
+const tempCelsius = atom<number, number>(0, { debugKey: 'tempCelsius' });
 
 const tempFahrenheit = selector(
   ({ get }) => celsiusToFahrenheit(get(tempCelsius)),
