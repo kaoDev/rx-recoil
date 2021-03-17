@@ -5,6 +5,7 @@ import {
   AtomDefinition,
   InternalRegisteredState,
   MutatableState,
+  StateKey,
   StateType,
   UpdateFunction,
 } from './types';
@@ -17,10 +18,12 @@ export function atom<Value, UpdateEvent = Value>(
   {
     update = identity,
     debugKey,
+    volatile,
   }: {
     update?: UpdateFunction<Value, UpdateEvent>;
     debugKey?: string;
-  } = {}
+    volatile?: boolean;
+  } = {},
 ): AtomDefinition<Value, UpdateEvent> {
   return {
     key: Symbol('ATO:' + debugKey),
@@ -28,14 +31,21 @@ export function atom<Value, UpdateEvent = Value>(
     type: StateType.Atom,
     update,
     debugKey,
+    volatile,
   };
 }
 
 export function createAtom<Value, UpdateEvent = Value>(
   atomDefinition: AtomDefinition<Value, UpdateEvent>,
-  report?: ErrorReporter
+  stateSleepCache: Map<StateKey, unknown>,
+  report?: ErrorReporter,
 ): InternalRegisteredState<Value, UpdateEvent> {
-  const value$ = new BehaviorSubject(atomDefinition.initialValue);
+  const initialValueFromSleep = stateSleepCache.get(atomDefinition.key) as
+    | Value
+    | undefined;
+  const value$ = new BehaviorSubject(
+    initialValueFromSleep ?? atomDefinition.initialValue,
+  );
 
   function dispatchUpdate(change: UpdateEvent) {
     const current = value$.value;
@@ -57,6 +67,7 @@ export function createAtom<Value, UpdateEvent = Value>(
     value$,
     key: atomDefinition.key,
     debugKey: atomDefinition.debugKey,
+    volatile: atomDefinition.volatile,
   };
 
   return { state: atom, refs: new Set() };

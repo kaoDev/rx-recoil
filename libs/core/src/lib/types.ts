@@ -16,24 +16,24 @@ export interface InternalStateAccess {
   getStateObject<Value, UpdateEvent>(
     definition: StateDefinition<Value, any>,
     usageId: UsageKey,
-    internal: boolean
+    internal: boolean,
   ): InternalRegisteredState<Value, UpdateEvent>;
   get<Value>(
     definition: StateDefinition<Value, any>,
     usageId: UsageKey,
-    internal: boolean
+    internal: boolean,
   ): Value;
   set<Value, UpdateEvent>(
     definition: MutatableStateDefinition<Value, UpdateEvent>,
     usageId: UsageKey,
     change: UpdateEvent,
-    internal: boolean
+    internal: boolean,
   ): void;
 }
 
 export interface StateReadAccess {
   getStateObject<Value>(
-    definition: StateDefinition<Value, any>
+    definition: StateDefinition<Value, any>,
   ): ReadOnlyState<Value>;
   get<Value>(definition: StateDefinition<Value, any>): Value;
 }
@@ -41,7 +41,7 @@ export interface StateReadAccess {
 export interface StateWriteAccess extends StateReadAccess {
   set<Value, UpdateEvent>(
     definition: MutatableStateDefinition<Value, UpdateEvent>,
-    change: UpdateEvent
+    change: UpdateEvent,
   ): void;
 }
 
@@ -54,11 +54,12 @@ export enum StateType {
 export interface BaseStateDefinition {
   key: StateKey;
   debugKey?: string;
+  volatile?: boolean;
 }
 
 export type UpdateFunction<Value, Update> = (
   state: Value,
-  change: Update
+  change: Update,
 ) => Value;
 
 type OptionalCleanup = void | (() => void) | Promise<void | (() => void)>;
@@ -69,24 +70,27 @@ export interface AtomDefinition<Value, UpdateEvent>
   type: StateType.Atom;
   update: UpdateFunction<Value, UpdateEvent>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
+  volatile?: boolean;
 }
 
 export interface SelectorDefinition<Value> extends BaseStateDefinition {
   type: StateType.Selector;
   read: (
-    stateAccess: StateReadAccess
+    stateAccess: StateReadAccess,
   ) => Value | Promise<Value> | Observable<Value>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
+  volatile?: boolean;
 }
 
 export interface MutatableSelectorDefinition<Value, Update>
   extends BaseStateDefinition {
   type: StateType.MutatableSelector;
   read: (
-    stateAccess: StateReadAccess
+    stateAccess: StateReadAccess,
   ) => Value | Promise<Value> | Observable<Value>;
   write: (stateAccess: StateWriteAccess, change: Update) => void;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
+  volatile?: boolean;
 }
 
 export interface ReadOnlyState<Value> extends BaseStateDefinition {

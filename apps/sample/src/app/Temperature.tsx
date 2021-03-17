@@ -14,13 +14,19 @@ function celsiusToFahrenheit(celsius: number) {
   return (celsius * 9) / 5 + 32;
 }
 
-const tempCelsius = atom<number, number>(0, { debugKey: 'tempCelsius' });
+const tempCelsius = atom<number, number>(0, {
+  debugKey: 'tempCelsius',
+  volatile: false,
+});
 
 const tempFahrenheit = selector(
   ({ get }) => celsiusToFahrenheit(get(tempCelsius)),
   ({ set }, newValue: number) => {
     set(tempCelsius, fahrenheitToCelsius(newValue));
-  }
+  },
+  {
+    volatile: true,
+  },
 );
 
 export function Temperature() {

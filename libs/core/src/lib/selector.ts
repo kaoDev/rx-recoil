@@ -22,46 +22,67 @@ import {
   MutatableSelectorDefinition,
   ReadOnlyStateDefinition,
   SelectorDefinition,
+  StateKey,
   StateReadAccess,
   StateType,
   StateWriteAccess,
 } from './types';
 
+interface SelectorOptions {
+  debugKey?: string;
+  volatile?: boolean;
+}
+
 // read-only selector
 export function selector<Value>(
-  read: (stateAccess: StateReadAccess) => Value
+  read: (stateAccess: StateReadAccess) => Value,
+  options?: SelectorOptions,
 ): SelectorDefinition<Value>;
 export function selector<Value>(
-  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>
+  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>,
+  options?: SelectorOptions,
 ): SelectorDefinition<Value | EMPTY_TYPE>;
 // writable derived selector
 export function selector<Value, Update>(
   read: (stateAccess: StateReadAccess) => Value,
-  write: (stateAccess: StateWriteAccess, update: Update) => void
+  write: (stateAccess: StateWriteAccess, update: Update) => void,
+  options?: SelectorOptions,
 ): MutatableSelectorDefinition<Value, Update>;
 export function selector<Value, Update>(
   read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>,
-  write: (stateAccess: StateWriteAccess, update: Update) => void
+  write: (stateAccess: StateWriteAccess, update: Update) => void,
+  options?: SelectorOptions,
 ): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>;
-
 export function selector<Value, Update>(
   read: (
-    stateAccess: StateReadAccess
+    stateAccess: StateReadAccess,
   ) => Value | Promise<Value> | Observable<Value>,
-  write?: (stateAccess: StateWriteAccess, update: Update) => void
+  write?:
+    | ((stateAccess: StateWriteAccess, update: Update) => void)
+    | SelectorOptions,
+  options?: SelectorOptions,
 ): SelectorDefinition<Value> | MutatableSelectorDefinition<Value, Update> {
+  if (typeof write === 'object') {
+    options = write;
+    write = undefined;
+  }
+
   if (write) {
     return {
       key: Symbol(),
       type: StateType.MutatableSelector,
       read,
       write,
+      volatile: options?.volatile,
+      debugKey: options?.debugKey,
     };
   }
   return {
     key: Symbol(),
     type: StateType.Selector,
     read,
+    volatile: options?.volatile,
+    debugKey: options?.debugKey,
   };
 }
 
@@ -69,18 +90,22 @@ export function createSelector<Value, Update>(
   selectorDefinition:
     | SelectorDefinition<Value>
     | MutatableSelectorDefinition<Value, Update>,
+  stateSleepCache: Map<StateKey, unknown>,
   stateAccess: InternalStateAccess,
-  report?: ErrorReporter
+  report?: ErrorReporter,
 ): InternalRegisteredState<Value | EMPTY_TYPE, Update> {
+  const initialValueFromSleep = stateSleepCache.get(selectorDefinition.key) as
+    | Value
+    | undefined;
   const dependencies = new Set<InternalRegisteredState<unknown, unknown>>();
 
   function getStateSubscribing<Value>(
-    definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
+    definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>,
   ) {
     const state = stateAccess.getStateObject(
       definition,
       selectorDefinition.key,
-      true
+      true,
     );
     if (!dependencies.has(state)) {
       dependencies.add(state);
@@ -90,12 +115,12 @@ export function createSelector<Value, Update>(
 
   const subscribingStateAccess: StateReadAccess = {
     getStateObject: function getStateObject<Value>(
-      definition: ReadOnlyStateDefinition<Value>
+      definition: ReadOnlyStateDefinition<Value>,
     ) {
       return getStateSubscribing(definition);
     },
     get: function get<Value>(
-      definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>
+      definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>,
     ) {
       const state = getStateSubscribing(definition);
       return state.value$.value;
@@ -104,19 +129,20 @@ export function createSelector<Value, Update>(
 
   const publicStateAccess = createPublicStateReadAccess(
     stateAccess,
-    selectorDefinition.key
+    selectorDefinition.key,
   );
 
   const initialValue = selectorDefinition.read(subscribingStateAccess);
 
   const value$ = new BehaviorSubject(
-    isPromise(initialValue) || isObservable(initialValue)
-      ? EMPTY_VALUE
-      : initialValue
+    initialValueFromSleep ??
+      (isPromise(initialValue) || isObservable(initialValue)
+        ? EMPTY_VALUE
+        : initialValue),
   );
   const onError = reportError(report);
   const subscription = merge(
-    ...Array.from(dependencies).map(({ state }) => state.value$)
+    ...Array.from(dependencies).map(({ state }) => state.value$),
   )
     .pipe(
       map(() => selectorDefinition.read(publicStateAccess)),
@@ -128,14 +154,14 @@ export function createSelector<Value, Update>(
           return from(value);
         }
         return of(value as Value);
-      })
+      }),
     )
     .subscribe(
       (nextValue: Value) => {
         value$.next(nextValue);
       },
       (error) =>
-        reportError(report)(error, `Exception in selector value stream`)
+        reportError(report)(error, `Exception in selector value stream`),
     );
 
   function onUnmount() {
@@ -151,13 +177,13 @@ export function createSelector<Value, Update>(
   if (Object.prototype.hasOwnProperty.call(selectorDefinition, 'write')) {
     const publicStateAccess = createPublicStateWriteAccess(
       stateAccess,
-      selectorDefinition.key
+      selectorDefinition.key,
     );
 
     dispatchUpdate = function dispatchUpdate(change: Update) {
       (selectorDefinition as MutatableSelectorDefinition<Value, Update>).write(
         publicStateAccess,
-        change
+        change,
       );
     };
 
@@ -168,6 +194,7 @@ export function createSelector<Value, Update>(
         key: selectorDefinition.key,
         dispatchUpdate,
         debugKey: selectorDefinition.debugKey,
+        volatile: selectorDefinition.volatile,
       },
       dependencies,
       onUnmount,
@@ -181,6 +208,7 @@ export function createSelector<Value, Update>(
       value$,
       key: selectorDefinition.key,
       debugKey: selectorDefinition.debugKey,
+      volatile: selectorDefinition.volatile,
     },
     dependencies,
     onUnmount,
