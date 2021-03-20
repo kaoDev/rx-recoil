@@ -3,7 +3,6 @@
     "workspace.json": "*",
     "package.json": { "dependencies": "*", "devDependencies": "*" },
     "tsconfig.base.json": "*",
-    "tslint.json": "*",
     ".eslintrc.json": "*",
     "nx.json": "*"
   },
@@ -18,6 +17,7 @@
   "projects": {
     "core": { "tags": [] },
     "persistence": { "tags": [] },
-    "sample": { "tags": [] }
+    "sample": { "tags": [] },
+    "query": { "tags": [] }
   }
 }

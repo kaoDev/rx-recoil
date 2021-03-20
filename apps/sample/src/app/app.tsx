@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import styles from './app.module.css';
 import { Counter } from './Counter';
 import { Temperature } from './Temperature';
+import { TodoQuery } from './TodoQuery';
 
 const stateContext = createStateContextValue();
 export function App() {
@@ -44,9 +45,22 @@ export function App() {
               />
               Temperature
             </label>
+            <label>
+              <input
+                type="radio"
+                checked={visibleSample === 'todoQuery'}
+                onChange={(e) => {
+                  setVisibleSample((e.target as HTMLInputElement).value);
+                }}
+                value="todoQuery"
+                name="sample"
+              />
+              Todo Query
+            </label>
           </section>
           {visibleSample === 'counter' && <Counter />}
           {visibleSample === 'temperature' && <Temperature />}
+          {visibleSample === 'todoQuery' && <TodoQuery />}
         </main>
       </div>
     </StateRoot>

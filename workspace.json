@@ -7,7 +7,8 @@
       "application": { "style": "css", "linter": "eslint", "babel": true },
       "component": { "style": "css" },
       "library": { "style": "css", "linter": "eslint" }
-    }
+    },
+    "@nrwl/next": { "application": { "style": "css", "linter": "eslint" } }
   },
   "projects": {
     "core": {
@@ -140,6 +141,39 @@
           "outputs": ["coverage/apps/sample"],
           "options": {
             "jestConfig": "apps/sample/jest.config.js",
+            "passWithNoTests": true
+          }
+        }
+      }
+    },
+    "query": {
+      "root": "libs/query",
+      "sourceRoot": "libs/query/src",
+      "projectType": "library",
+      "targets": {
+        "build": {
+          "executor": "@nrwl/web:package",
+          "outputs": ["{options.outputPath}"],
+          "options": {
+            "outputPath": "dist/libs/query",
+            "tsConfig": "libs/query/tsconfig.lib.json",
+            "project": "libs/query/package.json",
+            "entryFile": "libs/query/src/index.ts",
+            "external": ["react", "react-dom"],
+            "babelConfig": "@nrwl/react/plugins/bundle-babel",
+            "rollupConfig": "@nrwl/react/plugins/bundle-rollup",
+            "assets": [{ "glob": "README.md", "input": ".", "output": "." }]
+          }
+        },
+        "lint": {
+          "executor": "@nrwl/linter:eslint",
+          "options": { "lintFilePatterns": ["libs/query/**/*.{ts,tsx,js,jsx}"] }
+        },
+        "test": {
+          "executor": "@nrwl/jest:jest",
+          "outputs": ["coverage/libs/query"],
+          "options": {
+            "jestConfig": "libs/query/jest.config.js",
             "passWithNoTests": true
           }
         }

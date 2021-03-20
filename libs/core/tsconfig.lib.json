@@ -4,7 +4,8 @@
     "outDir": "../../dist/out-tsc",
     "types": ["node"],
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "target": "ES6"
   },
   "files": [],
   "exclude": ["**/*.spec.ts", "**/*.spec.tsx"],

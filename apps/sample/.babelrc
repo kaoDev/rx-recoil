@@ -1,4 +1,15 @@
 {
-  "presets": ["@nrwl/react/babel"],
+  "presets": [
+    "@nrwl/react/babel",
+    [
+      "@babel/preset-env",
+      {
+        "targets": { "browsers": ["> 0.25%", "not ie > 0"] },
+        "useBuiltIns": "usage",
+        "corejs": 3
+      }
+    ],
+    "@babel/preset-react"
+  ],
   "plugins": []
 }

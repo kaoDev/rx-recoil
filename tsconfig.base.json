@@ -12,7 +12,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "experimentalDecorators": true,
-    "importHelpers": true,
+    "importHelpers": false,
     "module": "esnext",
     "lib": ["es2017", "dom"],
     "skipLibCheck": true,
@@ -20,7 +20,8 @@
     "baseUrl": ".",
     "paths": {
       "@rx-recoil/core": ["libs/core/src/index.ts"],
-      "@rx-recoil/persistence": ["libs/persistence/src/index.ts"]
+      "@rx-recoil/persistence": ["libs/persistence/src/index.ts"],
+      "@rx-recoil/query": ["libs/query/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

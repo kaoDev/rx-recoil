@@ -14,7 +14,7 @@ import {
 const identity: UpdateFunction<any, any> = (_, change) => change;
 
 export function atom<Value, UpdateEvent = Value>(
-  initialValue: Value,
+  initialValue: Value | (() => Value),
   {
     update = identity,
     debugKey,
@@ -26,13 +26,23 @@ export function atom<Value, UpdateEvent = Value>(
   } = {},
 ): AtomDefinition<Value, UpdateEvent> {
   return {
-    key: Symbol('ATO:' + debugKey),
+    key: Symbol(debugKey),
     initialValue,
     type: StateType.Atom,
     update,
     debugKey,
     volatile,
   };
+}
+
+function readInitialValue<Value>(
+  init: AtomDefinition<Value, unknown>['initialValue'],
+) {
+  if (typeof init === 'function') {
+    return (init as () => Value)();
+  }
+
+  return init;
 }
 
 export function createAtom<Value, UpdateEvent = Value>(
@@ -44,7 +54,7 @@ export function createAtom<Value, UpdateEvent = Value>(
     | Value
     | undefined;
   const value$ = new BehaviorSubject(
-    initialValueFromSleep ?? atomDefinition.initialValue,
+    initialValueFromSleep ?? readInitialValue(atomDefinition.initialValue),
   );
 
   function dispatchUpdate(change: UpdateEvent) {

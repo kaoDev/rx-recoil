@@ -66,7 +66,7 @@ type OptionalCleanup = void | (() => void) | Promise<void | (() => void)>;
 
 export interface AtomDefinition<Value, UpdateEvent>
   extends BaseStateDefinition {
-  initialValue: Value;
+  initialValue: Value | (() => Value);
   type: StateType.Atom;
   update: UpdateFunction<Value, UpdateEvent>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;

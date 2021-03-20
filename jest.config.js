@@ -3,7 +3,7 @@ module.exports = {
     '<rootDir>/libs/core',
     '<rootDir>/libs/persistence',
     '<rootDir>/libs/utils',
-    '<rootDir>/libs/query',
     '<rootDir>/apps/sample',
+    '<rootDir>/libs/query',
   ],
 };

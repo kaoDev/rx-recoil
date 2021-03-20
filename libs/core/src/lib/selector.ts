@@ -141,28 +141,36 @@ export function createSelector<Value, Update>(
         : initialValue),
   );
   const onError = reportError(report);
-  const subscription = merge(
-    ...Array.from(dependencies).map(({ state }) => state.value$),
-  )
-    .pipe(
-      map(() => selectorDefinition.read(publicStateAccess)),
-      mergeMap((value) => {
-        if (isObservable(value)) {
-          return value;
-        }
-        if (isPromise(value)) {
-          return from(value);
-        }
-        return of(value as Value);
-      }),
-    )
-    .subscribe(
-      (nextValue: Value) => {
-        value$.next(nextValue);
-      },
-      (error) =>
-        reportError(report)(error, `Exception in selector value stream`),
-    );
+
+  const subscription =
+    //  merge(
+    //   ...Array.from(dependencies).map(({ state }) => state.value$),
+    // )
+    // eslint-disable-next-line prefer-spread
+    merge
+      .apply(
+        null,
+        Array.from(dependencies).map(({ state }) => state.value$),
+      )
+      .pipe(
+        map(() => selectorDefinition.read(publicStateAccess)),
+        mergeMap((value) => {
+          if (isObservable(value)) {
+            return value;
+          }
+          if (isPromise(value)) {
+            return from(value);
+          }
+          return of(value as Value);
+        }),
+      )
+      .subscribe(
+        (nextValue: Value) => {
+          value$.next(nextValue);
+        },
+        (error) =>
+          reportError(report)(error, `Exception in selector value stream`),
+      );
 
   function onUnmount() {
     subscription.unsubscribe();

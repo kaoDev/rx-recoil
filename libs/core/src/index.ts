@@ -6,12 +6,13 @@ export {
   useAtomRaw,
   createStateContextValue,
 } from './lib/core';
-export { ErrorReporter, reportError } from './lib/reportError';
+export { reportError } from './lib/reportError';
+export type { ErrorReporter } from './lib/reportError';
 export { selector } from './lib/selector';
-export {
+export { EMPTY_VALUE } from './lib/types';
+export type {
   AtomDefinition,
   EMPTY_TYPE,
-  EMPTY_VALUE,
   MutatableSelectorDefinition,
   MutatableState,
   MutatableStateDefinition,

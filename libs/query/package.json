@@ -1,11 +1,11 @@
 {
-  "name": "@rx-recoil/core",
+  "name": "@rx-recoil/query",
   "version": "0.0.5",
-  "license": "MIT",
   "peerDependencies": {
-    "react": ">=16.8.0",
-    "rxjs": ">=6"
+    "rxjs": ">=6",
+    "@rx-recoil/core": "*"
   },
+  "license": "MIT",
   "author": {
     "name": "Kalle Ott",
     "url": "https://github.com/kaoDev/"

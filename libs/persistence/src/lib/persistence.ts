@@ -1,7 +1,6 @@
 import { Subject } from 'rxjs';
 import { distinctUntilChanged, scan, skipUntil } from 'rxjs/operators';
-import { atom, EMPTY_TYPE, EMPTY_VALUE } from '@rx-recoil/core';
-import type { AtomDefinition } from '@rx-recoil/core';
+import { atom, EMPTY_TYPE, EMPTY_VALUE, AtomDefinition } from '@rx-recoil/core';
 
 type StoredValue = string | null;
 
@@ -9,7 +8,7 @@ type ErrorReporter = (error: Error) => void;
 
 const reportError = (report?: ErrorReporter) => (
   error: unknown,
-  fallbackMessage: string
+  fallbackMessage: string,
 ) => {
   if (error instanceof Error) {
     report?.(error);
@@ -30,7 +29,7 @@ function DEFAULT_PERSISTENCE_DESERIALIZE<V>(value: string) {
   return JSON.parse(value) as V;
 }
 
-export interface Storage {
+export interface StorageAccess {
   getItem(key: string): StoredValue | Promise<StoredValue>;
 
   setItem(key: string, value: string): void | Promise<void>;
@@ -40,7 +39,7 @@ export interface Storage {
 
 export interface PersistenceOptions<Value> {
   key: string;
-  storage: Storage;
+  storage: StorageAccess;
   version: number;
   fallbackValue: Value;
   serialize?: (value: Value) => string;
@@ -60,20 +59,17 @@ export function persistedAtom<Value>({
   persistencePrefix = '__RX_RECOIL_STATE',
   report,
   debugKey,
-}: PersistenceOptions<Value>): AtomDefinition<
-  Value | typeof EMPTY_VALUE,
-  Value
-> {
+}: PersistenceOptions<Value>): AtomDefinition<Value | EMPTY_TYPE, Value> {
   const storageKey = `${persistencePrefix}:${key}`;
 
-  async function writeValueToStorage(newValue: Value) {
+  function writeValueToStorage(newValue: Value) {
     try {
       const nextSerialized = serialize(newValue);
       const valueToSave: PersistedValue = {
         version,
         value: nextSerialized,
       };
-      await storage.setItem(storageKey, JSON.stringify(valueToSave));
+      return storage.setItem(storageKey, JSON.stringify(valueToSave));
     } catch (error) {
       reportError(report)(error, `failed to store value for ${key}`);
     }
@@ -90,39 +86,40 @@ export function persistedAtom<Value>({
     debugKey,
   });
 
-  state.onMount = async ({ set, get }) => {
+  state.onMount = ({ set, get }) => {
     const persistenceSubscription = persistQueue
       .pipe(
         distinctUntilChanged(),
         scan((_, nextValue) => nextValue),
-        skipUntil(mounted$)
+        skipUntil(mounted$),
       )
       .subscribe(writeValueToStorage);
 
-    try {
-      const rawString = await storage.getItem(storageKey);
-      const currentValue = get(state);
+    return Promise.all([storage.getItem(storageKey)])
+      .then(([rawString]) => {
+        const currentValue = get(state);
 
-      if (rawString != null) {
-        const rawValue: PersistedValue = JSON.parse(rawString);
-        const parsedValue = deserialize(rawValue.value, rawValue.version);
-        set(state, parsedValue);
-      } else if (currentValue === EMPTY_VALUE) {
+        if (rawString != null) {
+          const rawValue: PersistedValue = JSON.parse(rawString);
+          const parsedValue = deserialize(rawValue.value, rawValue.version);
+          set(state, parsedValue);
+        } else if (currentValue === EMPTY_VALUE) {
+          set(state, fallbackValue);
+        }
+      })
+      .catch((error) => {
+        reportError(report)(
+          error,
+          'failed to initialize persisted state from storage',
+        );
         set(state, fallbackValue);
-      }
-    } catch (error) {
-      reportError(report)(
-        error,
-        'failed to initialize persisted state from storage'
-      );
-      set(state, fallbackValue);
-    }
-
-    mounted$.next();
-
-    return () => {
-      persistenceSubscription.unsubscribe();
-    };
+      })
+      .then(() => {
+        mounted$.next();
+        return () => {
+          persistenceSubscription.unsubscribe();
+        };
+      });
   };
 
   return state;
