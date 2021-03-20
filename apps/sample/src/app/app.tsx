@@ -40,6 +40,7 @@ export function App() {
   const [visibleSample, setVisibleSample] = useState('temperature');
 
   useEffect(() => {
+    // eslint-disable-next-line no-console
     console.log('stateContext.stateMap', stateContext.stateMap);
   }, [visibleSample]);
 

@@ -32,7 +32,7 @@
     "workspace-generator": "nx workspace-generator",
     "dep-graph": "nx dep-graph",
     "help": "nx help",
-    "prepublish": "npm run sync-version && nx run-many --target=test --all && nx affected:build --all",
+    "prepublish": "npm run sync-version && nx run-many --target=test --all && nx run-many --target=lint --all && nx affected:build --all ",
     "sync-version": "node --experimental-json-modules --experimental-modules ./scripts/syncVersion.mjs",
     "publish:core": "npm publish dist/libs/core",
     "publish:persistence": "npm publish dist/libs/persistence",
