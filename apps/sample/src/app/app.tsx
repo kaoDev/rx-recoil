@@ -5,6 +5,33 @@ import { Counter } from './Counter';
 import { Temperature } from './Temperature';
 import { TodoQuery } from './TodoQuery';
 
+function ExampleOption({
+  label,
+  value,
+  visibleSample,
+  setVisibleSample,
+}: {
+  label: string;
+  value: string;
+  visibleSample: string;
+  setVisibleSample: (name: string) => void;
+}) {
+  return (
+    <label>
+      <input
+        type="radio"
+        checked={visibleSample === value}
+        onChange={(e) => {
+          setVisibleSample((e.target as HTMLInputElement).value);
+        }}
+        value={value}
+        name="sample"
+      />
+      {label}
+    </label>
+  );
+}
+
 const stateContext = createStateContextValue();
 export function App() {
   const [visibleSample, setVisibleSample] = useState('counter');
@@ -21,42 +48,21 @@ export function App() {
         </header>
         <main>
           <section>
-            <label>
-              <input
-                type="radio"
-                checked={visibleSample === 'counter'}
-                onChange={(e) => {
-                  setVisibleSample((e.target as HTMLInputElement).value);
-                }}
-                value="counter"
-                name="sample"
-              />
-              Counter
-            </label>
-            <label>
-              <input
-                type="radio"
-                checked={visibleSample === 'temperature'}
-                onChange={(e) => {
-                  setVisibleSample((e.target as HTMLInputElement).value);
-                }}
-                value="temperature"
-                name="sample"
-              />
-              Temperature
-            </label>
-            <label>
-              <input
-                type="radio"
-                checked={visibleSample === 'todoQuery'}
-                onChange={(e) => {
-                  setVisibleSample((e.target as HTMLInputElement).value);
-                }}
-                value="todoQuery"
-                name="sample"
-              />
-              Todo Query
-            </label>
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="counter"
+              label="Counter"
+            />
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="temperature"
+              label="Temperature"
+            />
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="todoQuery"
+              label="Todo Query"
+            />
           </section>
           {visibleSample === 'counter' && <Counter />}
           {visibleSample === 'temperature' && <Temperature />}

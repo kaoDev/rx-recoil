@@ -1,6 +1,6 @@
 {
   "name": "rx-recoil",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "license": "MIT",
   "repository": {
     "url": "https://github.com/kaoDev/rx-recoil"
@@ -87,6 +87,8 @@
     "npm": "^7.6.3",
     "react": "^17.0.1",
     "react-dom": "^17.0.1",
+    "react-error-boundary": "^3.1.1",
+    "react-json-view": "^1.21.3",
     "react-query": "^3.12.2",
     "regenerator-runtime": "^0.13.3",
     "rxjs": "^6.6.6",

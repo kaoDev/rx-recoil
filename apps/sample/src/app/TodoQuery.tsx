@@ -1,5 +1,23 @@
 import { useQuery } from '@rx-recoil/query';
 import React, { Suspense, useState } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
+import ReactJson from 'react-json-view';
+
+function ErrorFallback({
+  error,
+  resetErrorBoundary,
+}: {
+  error: Error;
+  resetErrorBoundary: () => void;
+}) {
+  return (
+    <div role="alert">
+      <p>Something went wrong:</p>
+      <pre>{error.message}</pre>
+      <button onClick={resetErrorBoundary}>Try again</button>
+    </div>
+  );
+}
 
 const todoFetcher = (
   id: string,
@@ -9,14 +27,25 @@ const todoFetcher = (
   title: string;
   completed: boolean;
 }> => {
-  return fetch(
-    `https://jsonplaceholder.typicode.com/todos/${id}`,
-  ).then((response) => response.json());
+  return fetch(`https://jsonplaceholder.typicode.com/todos/${id}`).then(
+    (response) => {
+      if (response.status >= 400) {
+        throw new Error(
+          `Failed to request data, got ${response.status} as server status`,
+        );
+      }
+      return response.json();
+    },
+  );
 };
 
 function Todo({ id }: { id: string }) {
   const todo = useQuery(id, todoFetcher);
-  return <div>{JSON.stringify(todo, null, 2)}</div>;
+  return (
+    <div style={{ textAlign: 'left' }}>
+      <ReactJson src={todo} />
+    </div>
+  );
 }
 
 export function TodoQuery() {
@@ -24,10 +53,21 @@ export function TodoQuery() {
   return (
     <section>
       <h2>Todo:</h2>
-      <input type="number" onChange={(e) => setId(e.target.value)} value={id} />
-      <Suspense fallback={<div>loading</div>}>
-        <Todo id={id} />
-      </Suspense>
+      <input
+        style={{ marginBottom: 20 }}
+        type="number"
+        onChange={(e) => setId(e.target.value)}
+        value={id}
+      />
+      <ErrorBoundary
+        FallbackComponent={ErrorFallback}
+        onReset={() => setId('1')}
+        resetKeys={[id]}
+      >
+        <Suspense fallback={<div>loading</div>}>
+          <Todo id={id} />
+        </Suspense>
+      </ErrorBoundary>
     </section>
   );
 }

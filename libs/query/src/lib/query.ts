@@ -7,7 +7,6 @@ import {
   useAtomRaw,
 } from '@rx-recoil/core';
 import { useEffect } from 'react';
-import { take } from 'rxjs/operators';
 
 interface ValidResult<Value> {
   value: Value;
@@ -62,12 +61,12 @@ function useQueryState<Value>(
 
   return {
     queryState,
-    value$: queryStateHolder.value$,
     dispatchUpdate: queryStateHolder.dispatchUpdate,
   };
 }
 
 function shouldFetch(queryState: QueryState<unknown>, ttl: number) {
+  console.log('shouldFetch', !!queryState.runningRequest);
   if (!!queryState.runningRequest || Date.now() - queryState.timestamp < ttl) {
     return false;
   }
@@ -92,10 +91,16 @@ function startRequestIfNecessary<Value>(
 
     freshRequest.then(
       (value) => {
-        dispatchUpdate({ result: { value }, timestamp: Date.now() });
+        queryState.result = { value };
+        queryState.timestamp = Date.now();
+        queryState.runningRequest = undefined;
+        dispatchUpdate({ ...queryState });
       },
       (error) => {
-        dispatchUpdate({ result: { error }, timestamp: Date.now() });
+        queryState.result = { error };
+        queryState.timestamp = Date.now();
+        queryState.runningRequest = undefined;
+        dispatchUpdate({ ...queryState });
       },
     );
   }
@@ -149,14 +154,26 @@ export function useQuery<Value>(
   } = { ttl: 5000 },
 ) {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, dispatchUpdate, value$ } = useQueryState(key, config);
+  const { queryState, dispatchUpdate } = useQueryState(key, config);
 
-  startRequestIfNecessary(key, fetcher, dispatchUpdate, queryState, config.ttl);
+  if (!queryState.runningRequest) {
+    startRequestIfNecessary(
+      key,
+      fetcher,
+      dispatchUpdate,
+      queryState,
+      config.ttl,
+    );
+  }
 
   if (queryState.result === EMPTY_VALUE) {
-    if (queryState.runningRequest) throw queryState.runningRequest;
+    console.log('empty');
+    if (queryState.runningRequest) {
+      console.log('throw running request');
+      throw queryState.runningRequest;
+    }
 
-    throw value$.pipe(take(1)).toPromise();
+    throw new Error('Failed to start request');
   }
 
   if (queryState.result.error) {
