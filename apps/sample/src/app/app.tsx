@@ -17,24 +17,27 @@ function ExampleOption({
   setVisibleSample: (name: string) => void;
 }) {
   return (
-    <label>
-      <input
-        type="radio"
-        checked={visibleSample === value}
-        onChange={(e) => {
-          setVisibleSample((e.target as HTMLInputElement).value);
-        }}
-        value={value}
-        name="sample"
-      />
-      {label}
-    </label>
+    <div style={{ marginBottom: 8 }}>
+      <label>
+        <input
+          type="radio"
+          checked={visibleSample === value}
+          onChange={(e) => {
+            setVisibleSample((e.target as HTMLInputElement).value);
+          }}
+          value={value}
+          name="sample"
+        />
+        {label}
+      </label>
+    </div>
   );
 }
 
 const stateContext = createStateContextValue();
+
 export function App() {
-  const [visibleSample, setVisibleSample] = useState('counter');
+  const [visibleSample, setVisibleSample] = useState('temperature');
 
   useEffect(() => {
     console.log('stateContext.stateMap', stateContext.stateMap);
@@ -50,22 +53,22 @@ export function App() {
           <section>
             <ExampleOption
               {...{ setVisibleSample, visibleSample }}
-              value="counter"
-              label="Counter"
+              value="temperature"
+              label="Mutable selector"
             />
             <ExampleOption
               {...{ setVisibleSample, visibleSample }}
-              value="temperature"
-              label="Temperature"
+              value="counter"
+              label="Persisted state"
             />
             <ExampleOption
               {...{ setVisibleSample, visibleSample }}
               value="todoQuery"
-              label="Todo Query"
+              label="Load remote data with useQuery"
             />
           </section>
-          {visibleSample === 'counter' && <Counter />}
           {visibleSample === 'temperature' && <Temperature />}
+          {visibleSample === 'counter' && <Counter />}
           {visibleSample === 'todoQuery' && <TodoQuery />}
         </main>
       </div>

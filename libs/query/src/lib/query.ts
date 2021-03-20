@@ -66,7 +66,6 @@ function useQueryState<Value>(
 }
 
 function shouldFetch(queryState: QueryState<unknown>, ttl: number) {
-  console.log('shouldFetch', !!queryState.runningRequest);
   if (!!queryState.runningRequest || Date.now() - queryState.timestamp < ttl) {
     return false;
   }
@@ -167,9 +166,7 @@ export function useQuery<Value>(
   }
 
   if (queryState.result === EMPTY_VALUE) {
-    console.log('empty');
     if (queryState.runningRequest) {
-      console.log('throw running request');
       throw queryState.runningRequest;
     }
 

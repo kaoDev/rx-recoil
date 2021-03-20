@@ -53,12 +53,15 @@ export function TodoQuery() {
   return (
     <section>
       <h2>Todo:</h2>
-      <input
-        style={{ marginBottom: 20 }}
-        type="number"
-        onChange={(e) => setId(e.target.value)}
-        value={id}
-      />
+      <label>
+        <p>choose todo id to load:</p>
+        <input
+          style={{ marginBottom: 20 }}
+          type="number"
+          onChange={(e) => setId(e.target.value)}
+          value={id}
+        />
+      </label>
       <ErrorBoundary
         FallbackComponent={ErrorFallback}
         onReset={() => setId('1')}
