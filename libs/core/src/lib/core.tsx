@@ -1,6 +1,7 @@
 import React, {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -27,6 +28,7 @@ import {
   StateKey,
   StateType,
   UsageKey,
+  SubscribableOrPromise,
 } from './types';
 
 function cleanupUsage({
@@ -88,7 +90,7 @@ function getStateObject<Value, UpdateEvent>(
     if (definition.onMount) {
       const publicStateAccess = createPublicStateWriteAccess(
         stateAcces,
-        state.state.key,
+        definition.key,
       );
       const cleanUp = definition.onMount?.(publicStateAccess);
 
@@ -229,15 +231,43 @@ export function StateRoot({
   );
 }
 
+type UnpackedAsyncValue<T> = T extends SubscribableOrPromise<infer U>
+  ? U | EMPTY_TYPE
+  : T;
+
 export function useAtomicState<Value>(
   identifier: SelectorDefinition<Value>,
-): ReadOnlyState<Value>;
+): ReadOnlyState<UnpackedAsyncValue<Value>>;
 export function useAtomicState<Value, UpdateEvent>(
-  identifier:
-    | AtomDefinition<Value, UpdateEvent>
-    | MutatableSelectorDefinition<Value, UpdateEvent>,
+  identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+): MutatableState<UnpackedAsyncValue<Value>, UpdateEvent>;
+export function useAtomicState<Value, UpdateEvent>(
+  identifier: AtomDefinition<Value, UpdateEvent>,
 ): MutatableState<Value, UpdateEvent>;
 export function useAtomicState<Value, UpdateEvent>(
+  identifier: StateDefinition<Value, UpdateEvent>,
+) {
+  return useAtomicStateInternal(
+    identifier as AtomDefinition<Value, UpdateEvent>,
+  ).stateReference;
+}
+
+function useAtomicStateInternal<Value>(
+  identifier: SelectorDefinition<Value>,
+): {
+  stateReference: ReadOnlyState<UnpackedAsyncValue<Value>>;
+  cleanUp: () => void;
+};
+function useAtomicStateInternal<Value, UpdateEvent>(
+  identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+): {
+  stateReference: MutatableState<UnpackedAsyncValue<Value>, UpdateEvent>;
+  cleanUp: () => void;
+};
+function useAtomicStateInternal<Value, UpdateEvent>(
+  identifier: AtomDefinition<Value, UpdateEvent>,
+): { stateReference: MutatableState<Value, UpdateEvent>; cleanUp: () => void };
+function useAtomicStateInternal<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
   const getStateObject = useContext(stateContext);
@@ -246,6 +276,7 @@ export function useAtomicState<Value, UpdateEvent>(
   }
   const [usageId] = useState(() => Symbol(`usage:${identifier.debugKey}`));
   const stateReference = useRef<InternalRegisteredState<Value, UpdateEvent>>();
+  const mounted = useRef(false);
 
   if (
     !stateReference.current ||
@@ -254,32 +285,53 @@ export function useAtomicState<Value, UpdateEvent>(
     stateReference.current = getStateObject(identifier, usageId);
   }
 
+  const registeredStateObject = stateReference.current;
+
+  const suspenseCleanup = useCallback(
+    function cleanUp() {
+      if (!mounted.current) {
+        stateReference.current?.refs.delete(usageId);
+      }
+    },
+    [usageId],
+  );
+
   useEffect(() => {
-    const registeredStateObject = stateReference.current;
-    if (registeredStateObject) {
-      registerStateUsage(registeredStateObject, usageId);
+    registerStateUsage(registeredStateObject, usageId);
+    mounted.current = true;
 
-      return () => {
-        cleanupUsage({
-          rootState: registeredStateObject,
-          usageId,
-          stateMap: getStateObject.stateMap,
-          stateSleepCache: getStateObject.stateSleepCache,
-        });
-      };
-    }
-  }, [getStateObject, identifier, usageId, stateReference]);
+    return () => {
+      cleanupUsage({
+        rootState: registeredStateObject,
+        usageId,
+        stateMap: getStateObject.stateMap,
+        stateSleepCache: getStateObject.stateSleepCache,
+      });
+    };
+  }, [
+    getStateObject.stateMap,
+    getStateObject.stateSleepCache,
+    registeredStateObject,
+    usageId,
+  ]);
 
-  return stateReference.current.state;
+  return {
+    stateReference: stateReference.current.state,
+    cleanUp: suspenseCleanup,
+  };
 }
 
 export function useAtom<Value>(
   identifier: SelectorDefinition<Value>,
-): [value: Exclude<Value, EMPTY_TYPE>, _: never];
+): [value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>, _: never];
 export function useAtom<Value, UpdateEvent>(
-  identifier:
-    | MutatableSelectorDefinition<Value, UpdateEvent>
-    | AtomDefinition<Value, UpdateEvent>,
+  identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+): [
+  value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>,
+  dispatchUpdate: (value: UpdateEvent) => void,
+];
+export function useAtom<Value, UpdateEvent>(
+  identifier: AtomDefinition<Value, UpdateEvent>,
 ): [
   value: Exclude<Value, EMPTY_TYPE>,
   dispatchUpdate: (value: UpdateEvent) => void,
@@ -287,13 +339,17 @@ export function useAtom<Value, UpdateEvent>(
 export function useAtom<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
-  const { value$, useValue, dispatchUpdate } = useAtomicState(
+  const {
+    stateReference: { value$, useValue, dispatchUpdate },
+    cleanUp,
+  } = useAtomicStateInternal(
     identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>,
   );
 
   const value = useValue();
 
   if (value === EMPTY_VALUE) {
+    cleanUp();
     throw (value$ as Observable<Value | EMPTY_TYPE>)
       .pipe(
         filter((val): val is Value => val !== EMPTY_VALUE),
@@ -307,11 +363,15 @@ export function useAtom<Value, UpdateEvent>(
 
 export function useAtomRaw<Value>(
   identifier: SelectorDefinition<Value>,
-): [value: Value, _: never];
+): [value: UnpackedAsyncValue<Value>, _: never];
 export function useAtomRaw<Value, UpdateEvent>(
-  identifier:
-    | MutatableSelectorDefinition<Value, UpdateEvent>
-    | AtomDefinition<Value, UpdateEvent>,
+  identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+): [
+  value: UnpackedAsyncValue<Value>,
+  dispatchUpdate: (value: UpdateEvent) => void,
+];
+export function useAtomRaw<Value, UpdateEvent>(
+  identifier: AtomDefinition<Value, UpdateEvent>,
 ): [value: Value, dispatchUpdate: (value: UpdateEvent) => void];
 export function useAtomRaw<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,

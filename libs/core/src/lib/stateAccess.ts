@@ -9,16 +9,16 @@ import {
 
 export function createPublicStateReadAccess(
   stateAccess: InternalStateAccess,
-  usageId: UsageKey
+  usageId: UsageKey,
 ) {
   const publicStateAccess: StateReadAccess = {
     getStateObject: function get<Value>(
-      definition: StateDefinition<Value, unknown>
+      definition: StateDefinition<Value, unknown>,
     ) {
-      return stateAccess.getStateObject(definition, usageId, true).state;
+      return stateAccess.getStateObject(definition, usageId).state;
     },
     get: function get<Value>(definition: StateDefinition<Value, unknown>) {
-      return stateAccess.get<Value>(definition, usageId, true);
+      return stateAccess.get<Value>(definition, usageId);
     },
   };
 
@@ -27,16 +27,16 @@ export function createPublicStateReadAccess(
 
 export function createPublicStateWriteAccess(
   stateAccess: InternalStateAccess,
-  usageId: UsageKey
+  usageId: UsageKey,
 ) {
   const publicReadAccess = createPublicStateReadAccess(stateAccess, usageId);
   const publicStateAccess: StateWriteAccess = {
     ...publicReadAccess,
     set: function set<Value, UpdateEvent>(
       definition: MutatableStateDefinition<Value, UpdateEvent>,
-      change: UpdateEvent
+      change: UpdateEvent,
     ) {
-      stateAccess.set(definition, usageId, change, true);
+      stateAccess.set(definition, usageId, change);
     },
   };
 

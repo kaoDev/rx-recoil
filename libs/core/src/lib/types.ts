@@ -1,4 +1,6 @@
-import { BehaviorSubject, Observable } from 'rxjs';
+import type { BehaviorSubject, Observable, Subscribable } from 'rxjs';
+
+export type SubscribableOrPromise<T> = Subscribable<T> | PromiseLike<T>;
 
 export const EMPTY_VALUE = Symbol('EMPTY_VALUE');
 export type EMPTY_TYPE = typeof EMPTY_VALUE;
@@ -16,18 +18,12 @@ export interface InternalStateAccess {
   getStateObject<Value, UpdateEvent>(
     definition: StateDefinition<Value, any>,
     usageId: UsageKey,
-    internal: boolean,
   ): InternalRegisteredState<Value, UpdateEvent>;
-  get<Value>(
-    definition: StateDefinition<Value, any>,
-    usageId: UsageKey,
-    internal: boolean,
-  ): Value;
+  get<Value>(definition: StateDefinition<Value, any>, usageId: UsageKey): Value;
   set<Value, UpdateEvent>(
     definition: MutatableStateDefinition<Value, UpdateEvent>,
     usageId: UsageKey,
     change: UpdateEvent,
-    internal: boolean,
   ): void;
 }
 
@@ -75,9 +71,7 @@ export interface AtomDefinition<Value, UpdateEvent>
 
 export interface SelectorDefinition<Value> extends BaseStateDefinition {
   type: StateType.Selector;
-  read: (
-    stateAccess: StateReadAccess,
-  ) => Value | Promise<Value> | Observable<Value>;
+  read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;
 }
@@ -85,9 +79,7 @@ export interface SelectorDefinition<Value> extends BaseStateDefinition {
 export interface MutatableSelectorDefinition<Value, Update>
   extends BaseStateDefinition {
   type: StateType.MutatableSelector;
-  read: (
-    stateAccess: StateReadAccess,
-  ) => Value | Promise<Value> | Observable<Value>;
+  read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>;
   write: (stateAccess: StateWriteAccess, change: Update) => void;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;

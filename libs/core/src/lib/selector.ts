@@ -1,13 +1,6 @@
-import {
-  BehaviorSubject,
-  from,
-  isObservable,
-  merge,
-  Observable,
-  of,
-} from 'rxjs';
+import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs';
 import { map, mergeMap } from 'rxjs/operators';
-import { isPromise, useObservablueValue } from './helpers';
+import { isPromise, isSubscribable, useObservablueValue } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
   createPublicStateReadAccess,
@@ -26,6 +19,7 @@ import {
   StateReadAccess,
   StateType,
   StateWriteAccess,
+  SubscribableOrPromise,
 } from './types';
 
 interface SelectorOptions {
@@ -39,7 +33,7 @@ export function selector<Value>(
   options?: SelectorOptions,
 ): SelectorDefinition<Value>;
 export function selector<Value>(
-  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>,
+  read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
   options?: SelectorOptions,
 ): SelectorDefinition<Value | EMPTY_TYPE>;
 // writable derived selector
@@ -49,14 +43,12 @@ export function selector<Value, Update>(
   options?: SelectorOptions,
 ): MutatableSelectorDefinition<Value, Update>;
 export function selector<Value, Update>(
-  read: (stateAccess: StateReadAccess) => Promise<Value> | Observable<Value>,
+  read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
   write: (stateAccess: StateWriteAccess, update: Update) => void,
   options?: SelectorOptions,
 ): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>;
 export function selector<Value, Update>(
-  read: (
-    stateAccess: StateReadAccess,
-  ) => Value | Promise<Value> | Observable<Value>,
+  read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>,
   write?:
     | ((stateAccess: StateWriteAccess, update: Update) => void)
     | SelectorOptions,
@@ -105,7 +97,6 @@ export function createSelector<Value, Update>(
     const state = stateAccess.getStateObject(
       definition,
       selectorDefinition.key,
-      true,
     );
     if (!dependencies.has(state)) {
       dependencies.add(state);
@@ -136,16 +127,31 @@ export function createSelector<Value, Update>(
 
   const value$ = new BehaviorSubject(
     initialValueFromSleep ??
-      (isPromise(initialValue) || isObservable(initialValue)
+      (isPromise(initialValue) || isSubscribable(initialValue)
         ? EMPTY_VALUE
         : initialValue),
   );
   const onError = reportError(report);
 
+  let initialValueSubscription: undefined | Unsubscribable;
+
+  if (isPromise(initialValue) || isSubscribable(initialValue)) {
+    initialValueSubscription = (isSubscribable(initialValue)
+      ? initialValue
+      : from(initialValue)
+    ).subscribe(
+      (nextValue: Value) => {
+        value$.next(nextValue);
+      },
+      (error) =>
+        reportError(report)(
+          error,
+          `Exception reading intial value for selector`,
+        ),
+    );
+  }
+
   const subscription =
-    //  merge(
-    //   ...Array.from(dependencies).map(({ state }) => state.value$),
-    // )
     // eslint-disable-next-line prefer-spread
     merge
       .apply(
@@ -155,7 +161,7 @@ export function createSelector<Value, Update>(
       .pipe(
         map(() => selectorDefinition.read(publicStateAccess)),
         mergeMap((value) => {
-          if (isObservable(value)) {
+          if (isSubscribable(value)) {
             return value;
           }
           if (isPromise(value)) {
@@ -174,6 +180,7 @@ export function createSelector<Value, Update>(
 
   function onUnmount() {
     subscription.unsubscribe();
+    initialValueSubscription?.unsubscribe();
   }
 
   function useValue() {

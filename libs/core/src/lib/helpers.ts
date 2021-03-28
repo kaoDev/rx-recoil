@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { BehaviorSubject } from 'rxjs';
+import type { BehaviorSubject, Subscribable } from 'rxjs';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -9,9 +9,13 @@ export function isPromise(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
+export function isSubscribable<T>(value: unknown): value is Subscribable<T> {
+  return !!value && typeof (value as any).subscribe === 'function';
+}
+
 export function useObservablueValue<Value>(
   source$: BehaviorSubject<Value>,
-  onError: (error: unknown, fallbackMessage: string) => void
+  onError: (error: unknown, fallbackMessage: string) => void,
 ) {
   const [state, setState] = useState(() => source$.value);
 
@@ -20,7 +24,7 @@ export function useObservablueValue<Value>(
       (value) => {
         setState(value);
       },
-      (error) => onError(error, `Exception in atom value stream`)
+      (error) => onError(error, `Exception in atom value stream`),
     );
 
     return () => subscription.unsubscribe();

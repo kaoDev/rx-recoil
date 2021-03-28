@@ -1,6 +1,6 @@
 {
   "name": "rx-recoil",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "license": "MIT",
   "repository": {
     "url": "https://github.com/kaoDev/rx-recoil"
@@ -80,6 +80,7 @@
     "typescript": "^4.2.3"
   },
   "dependencies": {
+    "@testing-library/react-hooks": "^5.1.0",
     "core-js": "^3.9.1",
     "document-register-element": "^1.14.10",
     "i": "^0.3.6",

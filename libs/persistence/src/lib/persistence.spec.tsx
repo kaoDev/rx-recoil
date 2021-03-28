@@ -1,75 +1,56 @@
-import { StateRoot, useAtom } from '@rx-recoil/core';
-import { fireEvent, render, waitFor } from '@testing-library/react';
-import React, { Suspense } from 'react';
-import { persistedAtom, Storage } from './persistence';
+import {
+  createStateContextValue,
+  StateRoot,
+  useAtom,
+  useAtomRaw,
+} from '@rx-recoil/core';
+import { cleanup, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react-hooks';
+import { act } from 'react-dom/test-utils';
+import { persistedAtom, StorageAccess } from './persistence';
+
+async function tick() {
+  await new Promise((res) => setTimeout(res));
+}
 
 describe('Persistence atom', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('should start with the fallback value if no value is stored', async () => {
-    const storage: Storage = {
+    const storage: StorageAccess = {
       getItem: jest.fn(() => null),
       removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
-    const deserialize = jest.fn(
-      (serialized: string, _version: number) => serialized
-    );
-
     const persistedState = persistedAtom({
       key: 'test',
       storage,
       fallbackValue: 'fallbackValue',
       version: 0,
-      deserialize,
     });
-    const TestComponent = () => {
-      const [value] = useAtom(persistedState);
-
-      return <div>{value}</div>;
-    };
-
-    const { baseElement, rerender } = render(
-      <StateRoot>
-        <Suspense fallback={'loading'}>
-          <TestComponent />
-        </Suspense>
-      </StateRoot>
-    );
-    expect(baseElement).toBeTruthy();
-
+    const { result } = renderHook(() => useAtom(persistedState), {
+      wrapper: StateRoot,
+    });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(deserialize).not.toHaveBeenCalled());
+    await tick();
 
-    rerender(
-      <StateRoot>
-        <Suspense fallback={'loading'}>
-          <TestComponent />
-        </Suspense>
-      </StateRoot>
-    );
-
-    expect(baseElement).toMatchInlineSnapshot(`
-      <body>
-        <div>
-          <div>
-            fallbackValue
-          </div>
-        </div>
-      </body>
-    `);
+    expect(result.current[0]).toBe('fallbackValue');
   });
 
   it('should restore state from storage', async () => {
-    const storage: Storage = {
+    const storage: StorageAccess = {
       getItem: jest.fn(() =>
-        JSON.stringify({ version: 0, value: 'valueFromStore' })
+        JSON.stringify({ version: 0, value: 'valueFromStore' }),
       ),
       removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
     const deserialize = jest.fn(
-      (serialized: string, _version: number) => serialized
+      (serialized: string, _version: number) => serialized,
     );
 
     const persistedState = persistedAtom({
@@ -79,89 +60,92 @@ describe('Persistence atom', () => {
       version: 0,
       deserialize,
     });
-    const TestComponent = () => {
-      const [value] = useAtom(persistedState);
 
-      return <div>{value}</div>;
-    };
-
-    const { baseElement, rerender } = render(
-      <StateRoot>
-        <Suspense fallback={'loading'}>
-          <TestComponent />
-        </Suspense>
-      </StateRoot>
-    );
-    expect(baseElement).toBeTruthy();
-
+    const { result } = renderHook(() => useAtom(persistedState), {
+      wrapper: StateRoot,
+    });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(deserialize).toHaveBeenCalledTimes(1));
-
-    expect(deserialize).toHaveBeenCalledWith('valueFromStore', 0);
-
-    rerender(
-      <StateRoot>
-        <Suspense fallback={'loading'}>
-          <TestComponent />
-        </Suspense>
-      </StateRoot>
-    );
-
-    expect(baseElement).toMatchInlineSnapshot(`
-      <body>
-        <div>
-          <div>
-            valueFromStore
-          </div>
-        </div>
-      </body>
-    `);
+    await tick();
+    expect(result.current[0]).toBe('valueFromStore');
   });
 
   it('should update the value stored in storage when shared state changes', async () => {
-    const storage: Storage = {
+    const storage: StorageAccess = {
       getItem: jest.fn(() =>
-        JSON.stringify({ version: 0, value: 'valueFromStore' })
+        JSON.stringify({ version: 0, value: 'valueFromStore' }),
       ),
       removeItem: jest.fn(),
       setItem: jest.fn(),
     };
-
-    const serialize = jest.fn((value: string) => value);
 
     const persistedState = persistedAtom({
       key: 'test',
       storage,
       fallbackValue: 'fallbackValue',
       version: 0,
-      serialize,
     });
-    const TestComponent = () => {
-      const [, setValue] = useAtom(persistedState);
 
-      return (
-        <button onClick={() => setValue('changed state')}>change state</button>
-      );
-    };
-
-    const { baseElement, findByText } = render(
-      <StateRoot>
-        <Suspense fallback={'loading'}>
-          <TestComponent />
-        </Suspense>
-      </StateRoot>
-    );
-    expect(baseElement).toBeTruthy();
+    const { result } = renderHook(() => useAtom(persistedState), {
+      wrapper: StateRoot,
+    });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
+    await tick();
 
-    const button = await findByText('change state');
-    fireEvent.click(button);
+    act(() => {
+      result.current[1]('changed state');
+    });
 
-    await waitFor(() => expect(serialize).toBeCalledTimes(1));
-    await waitFor(() => expect(serialize).toBeCalledWith('changed state'));
+    await waitFor(() => expect(storage.setItem).toHaveBeenCalledTimes(1));
+
     expect(storage.setItem).toBeCalledWith(
       '__RX_RECOIL_STATE:test',
-      JSON.stringify({ version: 0, value: 'changed state' })
+      JSON.stringify({ version: 0, value: JSON.stringify('changed state') }),
     );
+  });
+
+  it('should be completely unmounted when no hook is using persisted state', async () => {
+    const storage: StorageAccess = {
+      getItem: jest.fn(() =>
+        JSON.stringify({ version: 0, value: 'valueFromStore' }),
+      ),
+      removeItem: jest.fn(),
+      setItem: jest.fn(),
+    };
+
+    const persistedState = persistedAtom({
+      key: 'test',
+      storage,
+      fallbackValue: 'fallbackValue',
+      version: 0,
+      debugKey: 'DEBUG',
+    });
+
+    const stateContext = createStateContextValue();
+
+    const { result, unmount } = renderHook(() => useAtomRaw(persistedState), {
+      wrapper: StateRoot,
+      initialProps: { context: stateContext },
+    });
+    await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
+    await tick();
+
+    act(() => {
+      result.current[1]('changed state');
+    });
+
+    await waitFor(() => expect(storage.setItem).toHaveBeenCalledTimes(1));
+
+    expect(storage.setItem).toBeCalledWith(
+      '__RX_RECOIL_STATE:test',
+      JSON.stringify({ version: 0, value: JSON.stringify('changed state') }),
+    );
+
+    unmount();
+
+    await tick();
+    expect(stateContext.stateMap.get(persistedState.key)).toMatchInlineSnapshot(
+      `undefined`,
+    );
+    expect(stateContext.stateMap.size).toBe(0);
   });
 });
