@@ -22,37 +22,38 @@ import {
   SubscribableOrPromise,
 } from './types';
 
-interface SelectorOptions {
+interface SelectorOptions<Value> {
   debugKey?: string;
   volatile?: boolean;
+  initialValue?: Value;
 }
 
 // read-only selector
 export function selector<Value>(
   read: (stateAccess: StateReadAccess) => Value,
-  options?: SelectorOptions,
+  options?: SelectorOptions<Value>,
 ): SelectorDefinition<Value>;
 export function selector<Value>(
   read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
-  options?: SelectorOptions,
+  options?: SelectorOptions<Value>,
 ): SelectorDefinition<Value | EMPTY_TYPE>;
 // writable derived selector
 export function selector<Value, Update>(
   read: (stateAccess: StateReadAccess) => Value,
   write: (stateAccess: StateWriteAccess, update: Update) => void,
-  options?: SelectorOptions,
+  options?: SelectorOptions<Value>,
 ): MutatableSelectorDefinition<Value, Update>;
 export function selector<Value, Update>(
   read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
   write: (stateAccess: StateWriteAccess, update: Update) => void,
-  options?: SelectorOptions,
+  options?: SelectorOptions<Value>,
 ): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>;
 export function selector<Value, Update>(
   read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>,
   write?:
     | ((stateAccess: StateWriteAccess, update: Update) => void)
-    | SelectorOptions,
-  options?: SelectorOptions,
+    | SelectorOptions<Value>,
+  options?: SelectorOptions<Value>,
 ): SelectorDefinition<Value> | MutatableSelectorDefinition<Value, Update> {
   if (typeof write === 'object') {
     options = write;
@@ -65,16 +66,14 @@ export function selector<Value, Update>(
       type: StateType.MutatableSelector,
       read,
       write,
-      volatile: options?.volatile,
-      debugKey: options?.debugKey,
+      ...options,
     };
   }
   return {
     key: Symbol(),
     type: StateType.Selector,
     read,
-    volatile: options?.volatile,
-    debugKey: options?.debugKey,
+    ...options,
   };
 }
 
@@ -128,7 +127,7 @@ export function createSelector<Value, Update>(
   const value$ = new BehaviorSubject(
     initialValueFromSleep ??
       (isPromise(initialValue) || isSubscribable(initialValue)
-        ? EMPTY_VALUE
+        ? selectorDefinition.initialValue ?? EMPTY_VALUE
         : initialValue),
   );
   const onError = reportError(report);

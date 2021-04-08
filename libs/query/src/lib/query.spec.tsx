@@ -52,7 +52,7 @@ describe('query', () => {
     });
 
     function Tester() {
-      const data = useQuery('test/1', fetcher);
+      const [data] = useQuery('test/1', fetcher);
 
       return <div>{data}</div>;
     }
@@ -119,7 +119,7 @@ describe('query', () => {
     });
 
     function Tester() {
-      const data = useQuery('test/1', fetcher);
+      const [data] = useQuery('test/1', fetcher);
 
       return <div>{data}</div>;
     }

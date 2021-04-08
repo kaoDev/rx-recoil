@@ -1,47 +1,54 @@
 import {
   atom,
-  AtomDefinition,
   EMPTY_TYPE,
   EMPTY_VALUE,
-  useAtomicState,
+  selector,
+  SelectorDefinition,
+  useAtom,
   useAtomRaw,
 } from '@rx-recoil/core';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
+import { Observable, Subject } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
 interface ValidResult<Value> {
   value: Value;
+  timestamp: number;
   error?: undefined;
 }
 interface ErrorResult {
   value?: undefined;
+  timestamp: number;
   error: Error;
 }
-type QueryResult<Value> = ValidResult<Value> | ErrorResult | EMPTY_TYPE;
+type QueryResult<Value> = ValidResult<Value> | ErrorResult;
 interface QueryState<Value> {
-  result: QueryResult<Value>;
-  timestamp: number;
+  selector: SelectorDefinition<QueryResult<Value> | EMPTY_TYPE>;
+  update$: Subject<Promise<Value>>;
   runningRequest?: Promise<Value>;
 }
 
-function createQueryAtom<Value>(key: string, initialValue?: Value) {
-  return atom<QueryState<Value>, QueryState<Value>>(
-    {
-      result: initialValue ? { value: initialValue } : EMPTY_VALUE,
-      timestamp: 0,
-    },
-    {
-      volatile: true,
-      debugKey: key,
-    },
-  );
+const queryRegistry = atom(() => new Map<string, QueryState<unknown>>());
+
+function createQuerySelector<Value>(
+  value$: Observable<QueryResult<Value>>,
+  key: string,
+  initialData?: Value,
+): SelectorDefinition<QueryResult<Value> | EMPTY_TYPE> {
+  const initialValue = initialData
+    ? { value: initialData, timestamp: 0 }
+    : undefined;
+
+  return selector<QueryResult<Value>>(() => value$, {
+    volatile: true,
+    debugKey: key,
+    initialValue,
+  });
 }
-
-type QueryAtom<Value> = AtomDefinition<QueryState<Value>, QueryState<Value>>;
-
-const queryRegistry = atom(() => new Map<string, QueryAtom<unknown>>());
 
 function useQueryState<Value>(
   key: string,
+  fetcher: (key: string) => Promise<Value>,
   config: {
     initialData?: Value;
     ttl: number;
@@ -49,24 +56,55 @@ function useQueryState<Value>(
 ) {
   const queries = useAtomRaw(queryRegistry)[0];
 
-  let queryAtom = queries.get(key) as QueryAtom<Value> | undefined;
-  if (!queryAtom) {
-    queryAtom = createQueryAtom<Value>(key, config.initialData);
-    queries.set(key, queryAtom as QueryAtom<unknown>);
+  let queryState = queries.get(key) as QueryState<Value> | undefined;
+
+  if (!queryState) {
+    const update$ = new Subject<Promise<Value>>();
+
+    const value$: Observable<QueryResult<Value>> = update$.pipe(
+      switchMap((promise) => {
+        function cleanUp() {
+          if (queryState?.runningRequest === promise) {
+            queryState.runningRequest = undefined;
+          }
+        }
+
+        return promise
+          .then((value) => {
+            cleanUp();
+            return { value, timestamp: Date.now() };
+          })
+          .catch((error: Error) => {
+            cleanUp();
+            return { error, timestamp: Date.now() };
+          });
+      }),
+    );
+
+    const querySelector = createQuerySelector(value$, key, config.initialData);
+
+    queryState = { selector: querySelector, update$ };
+    queries.set(key, queryState as QueryState<unknown>);
   }
 
-  const queryStateHolder = useAtomicState(queryAtom);
-
-  const queryState = queryStateHolder.useValue();
+  const refetch = useCallback(() => {
+    const fetchPromise = fetcher(key);
+    queryState!.runningRequest = fetchPromise;
+    queryState!.update$.next(fetchPromise);
+  }, [queryState, fetcher, key]);
 
   return {
     queryState,
-    dispatchUpdate: queryStateHolder.dispatchUpdate,
+    refetch,
   };
 }
 
-function shouldFetch(queryState: QueryState<unknown>, ttl: number) {
-  if (!!queryState.runningRequest || Date.now() - queryState.timestamp < ttl) {
+function shouldFetch(
+  runningRequest: Promise<unknown> | undefined,
+  timestamp: number | undefined,
+  ttl: number,
+) {
+  if (!!runningRequest || (timestamp && Date.now() - timestamp < ttl)) {
     return false;
   }
 
@@ -74,36 +112,38 @@ function shouldFetch(queryState: QueryState<unknown>, ttl: number) {
 }
 
 function startRequestIfNecessary<Value>(
-  key: string,
-  fetcher: (key: string) => Promise<Value>,
-  dispatchUpdate: (value: QueryState<Value>) => void,
+  refetch: () => void,
   queryState: QueryState<Value>,
+  queryValue: QueryResult<Value> | EMPTY_TYPE,
   ttl: number,
 ) {
-  if (shouldFetch(queryState, ttl)) {
-    const freshRequest = fetcher(key);
-    queryState.runningRequest = freshRequest;
+  const timestamp =
+    queryValue === EMPTY_VALUE ? undefined : queryValue.timestamp;
 
-    dispatchUpdate({
-      ...queryState,
-    });
-
-    freshRequest.then(
-      (value) => {
-        queryState.result = { value };
-        queryState.timestamp = Date.now();
-        queryState.runningRequest = undefined;
-        dispatchUpdate({ ...queryState });
-      },
-      (error) => {
-        queryState.result = { error };
-        queryState.timestamp = Date.now();
-        queryState.runningRequest = undefined;
-        dispatchUpdate({ ...queryState });
-      },
-    );
+  if (shouldFetch(queryState.runningRequest, timestamp, ttl)) {
+    refetch();
   }
 }
+
+type QueryRawResult<Value> =
+  | {
+      data: Value;
+      error: undefined;
+      loading: false;
+      refetch: () => void;
+    }
+  | {
+      data: undefined;
+      error: Error;
+      loading: false;
+      refetch: () => void;
+    }
+  | {
+      data: undefined;
+      error: undefined;
+      loading: true;
+      refetch: () => void;
+    };
 
 export function useQueryRaw<Value>(
   queryId: string | (() => string),
@@ -112,36 +152,26 @@ export function useQueryRaw<Value>(
     initialData?: Value;
     ttl: number;
   } = { ttl: 5000 },
-) {
+): QueryRawResult<Value> {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, dispatchUpdate } = useQueryState(key, config);
+  const { queryState, refetch } = useQueryState(key, fetcher, config);
+
+  const [queryValue] = useAtomRaw(queryState.selector);
 
   useEffect(() => {
-    startRequestIfNecessary(
-      key,
-      fetcher,
-      dispatchUpdate,
-      queryState,
-      config.ttl,
-    );
-  }, [
-    config.ttl,
-    fetcher,
-    key,
-    queryState,
-    queryState.runningRequest,
-    dispatchUpdate,
-  ]);
+    startRequestIfNecessary(refetch, queryState, queryValue, config.ttl);
+  }, [config.ttl, queryState, queryValue, refetch]);
 
-  if (queryState.result === EMPTY_VALUE) {
-    return { data: undefined, loading: true, error: undefined };
+  if (queryValue === EMPTY_VALUE) {
+    return { refetch, data: undefined, loading: true, error: undefined };
   }
 
   return {
-    data: queryState.result.value,
+    data: queryValue.value,
+    error: queryValue.error,
     loading: false,
-    error: queryState.result.error,
-  };
+    refetch,
+  } as QueryRawResult<Value>;
 }
 
 export function useQuery<Value>(
@@ -151,31 +181,23 @@ export function useQuery<Value>(
     initialData?: Value;
     ttl: number;
   } = { ttl: 5000 },
-) {
+): [value: Value, refetch: () => void] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, dispatchUpdate } = useQueryState(key, config);
+  const { queryState, refetch } = useQueryState(key, fetcher, config);
 
-  if (!queryState.runningRequest) {
-    startRequestIfNecessary(
-      key,
-      fetcher,
-      dispatchUpdate,
-      queryState,
-      config.ttl,
-    );
-  }
+  try {
+    const [queryValue] = useAtom(queryState.selector);
+    startRequestIfNecessary(refetch, queryState, queryValue, config.ttl);
 
-  if (queryState.result === EMPTY_VALUE) {
-    if (queryState.runningRequest) {
-      throw queryState.runningRequest;
+    if (queryValue.error) {
+      throw queryValue.error;
     }
 
-    throw new Error('Failed to start request');
+    return [queryValue.value, refetch];
+  } catch (promiseOrError) {
+    if (promiseOrError instanceof Promise) {
+      startRequestIfNecessary(refetch, queryState, EMPTY_VALUE, config.ttl);
+    }
+    throw promiseOrError;
   }
-
-  if (queryState.result.error) {
-    throw queryState.result.error;
-  }
-
-  return queryState.result.value;
 }

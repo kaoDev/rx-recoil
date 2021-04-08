@@ -74,6 +74,7 @@ export interface SelectorDefinition<Value> extends BaseStateDefinition {
   read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;
+  initialValue?: Value;
 }
 
 export interface MutatableSelectorDefinition<Value, Update>
@@ -83,6 +84,7 @@ export interface MutatableSelectorDefinition<Value, Update>
   write: (stateAccess: StateWriteAccess, change: Update) => void;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;
+  initialValue?: Value;
 }
 
 export interface ReadOnlyState<Value> extends BaseStateDefinition {

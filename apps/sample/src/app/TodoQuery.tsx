@@ -14,7 +14,7 @@ function ErrorFallback({
     <div role="alert">
       <p>Something went wrong:</p>
       <pre>{error.message}</pre>
-      <button onClick={resetErrorBoundary}>Try again</button>
+      <button onClick={resetErrorBoundary}>Reset</button>
     </div>
   );
 }
@@ -40,7 +40,7 @@ const todoFetcher = (
 };
 
 function Todo({ id }: { id: string }) {
-  const todo = useQuery(id, todoFetcher);
+  const [todo] = useQuery(id, todoFetcher);
   return (
     <div style={{ textAlign: 'left' }}>
       <ReactJson src={todo} />
