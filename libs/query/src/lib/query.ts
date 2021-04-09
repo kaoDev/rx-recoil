@@ -92,7 +92,7 @@ function useQueryState<Value>(
     queries.set(key, queryState as QueryState<unknown>);
 
     const prefetched = prefetchPromises.get(key);
-    if (prefetched && prefetched.ts - Date.now() < ttl) {
+    if (prefetched && Date.now() - prefetched.ts < ttl) {
       queryState.runningRequest = prefetched.p as Promise<Value>;
       queryState!.update$.next(prefetched.p as Promise<Value>);
     }
@@ -227,8 +227,12 @@ export function usePrefetchCallback(
   const [prefetchPromises] = useAtom(prefetchRegistry);
 
   return useCallback(
-    (queryId: string | (() => string)) => {
+    (queryId: string | (() => string), ttl = DEFAULT_CACHE_TIME) => {
       const key = typeof queryId !== 'string' ? queryId() : queryId;
+      const prefetched = prefetchPromises.get(key);
+      if (prefetched && Date.now() - prefetched.ts < ttl) {
+        return;
+      }
       prefetchPromises.set(key, { p: fetcher(key), ts: Date.now() });
     },
     [fetcher, prefetchPromises],

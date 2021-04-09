@@ -164,6 +164,8 @@ describe('query', () => {
       const prefetch = usePrefetchCallback(fetcher);
       useEffect(() => {
         prefetch('test/1');
+        prefetch('test/1');
+        prefetch('test/1');
       }, [prefetch]);
 
       return null;
