@@ -91,6 +91,8 @@ function useQueryState<Value>(
     const fetchPromise = fetcher(key);
     queryState!.runningRequest = fetchPromise;
     queryState!.update$.next(fetchPromise);
+
+    return fetchPromise;
   }, [queryState, fetcher, key]);
 
   return {
@@ -130,19 +132,19 @@ type QueryRawResult<Value> =
       data: Value;
       error: undefined;
       loading: false;
-      refetch: () => void;
+      refetch: () => Promise<Value>;
     }
   | {
       data: undefined;
       error: Error;
       loading: false;
-      refetch: () => void;
+      refetch: () => Promise<Value>;
     }
   | {
       data: undefined;
       error: undefined;
       loading: true;
-      refetch: () => void;
+      refetch: () => Promise<Value>;
     };
 
 export function useQueryRaw<Value>(
@@ -181,7 +183,7 @@ export function useQuery<Value>(
     initialData?: Value;
     ttl: number;
   } = { ttl: 5000 },
-): [value: Value, refetch: () => void] {
+): [value: Value, refetch: () => Promise<Value>] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
   const { queryState, refetch } = useQueryState(key, fetcher, config);
 
