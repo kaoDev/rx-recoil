@@ -11,7 +11,8 @@ import {
 } from './core';
 import { selector } from './selector';
 import { EMPTY_VALUE } from './types';
-describe.only('rx-recoil selector functionality', () => {
+
+describe('rx-recoil selector functionality', () => {
   afterEach(() => {
     cleanup();
   });

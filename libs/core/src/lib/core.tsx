@@ -1,7 +1,6 @@
 import React, {
   createContext,
   ReactNode,
-  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -67,9 +66,9 @@ function cleanupUsage({
 
 function registerStateUsage(
   stateObject: InternalRegisteredState<unknown, unknown>,
-  usageId: UsageKey,
+  usageId?: UsageKey,
 ) {
-  if (usageId !== stateObject.state.key) {
+  if (usageId !== undefined && usageId !== stateObject.state.key) {
     stateObject.refs.add(usageId);
   }
 }
@@ -128,7 +127,7 @@ function createGetState(
 ) {
   function getState<Value, UpdateEvent>(
     definition: StateDefinition<Value, UpdateEvent>,
-    usageId: UsageKey,
+    usageId?: UsageKey,
   ): InternalRegisteredState<Value, UpdateEvent> {
     switch (definition.type) {
       case StateType.Atom: {
@@ -266,7 +265,7 @@ function useAtomicStateInternal<Value, UpdateEvent>(
 };
 function useAtomicStateInternal<Value, UpdateEvent>(
   identifier: AtomDefinition<Value, UpdateEvent>,
-): { stateReference: MutatableState<Value, UpdateEvent>; cleanUp: () => void };
+): { stateReference: MutatableState<Value, UpdateEvent> };
 function useAtomicStateInternal<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
@@ -276,7 +275,7 @@ function useAtomicStateInternal<Value, UpdateEvent>(
   }
   const [usageId] = useState(() => Symbol(`usage:${identifier.debugKey}`));
   const stateReference = useRef<InternalRegisteredState<Value, UpdateEvent>>();
-  const mounted = useRef(false);
+  const registered = useRef(false);
 
   if (
     !stateReference.current ||
@@ -285,20 +284,15 @@ function useAtomicStateInternal<Value, UpdateEvent>(
     stateReference.current = getStateObject(identifier, usageId);
   }
 
-  const registeredStateObject = stateReference.current;
+  if (!registered.current) {
+    stateReference.current?.refs.delete(usageId);
+  }
 
-  const suspenseCleanup = useCallback(
-    function cleanUp() {
-      if (!mounted.current) {
-        stateReference.current?.refs.delete(usageId);
-      }
-    },
-    [usageId],
-  );
+  const registeredStateObject = stateReference.current;
 
   useEffect(() => {
     registerStateUsage(registeredStateObject, usageId);
-    mounted.current = true;
+    registered.current = true;
 
     return () => {
       cleanupUsage({
@@ -317,7 +311,6 @@ function useAtomicStateInternal<Value, UpdateEvent>(
 
   return {
     stateReference: stateReference.current.state,
-    cleanUp: suspenseCleanup,
   };
 }
 
@@ -341,7 +334,6 @@ export function useAtom<Value, UpdateEvent>(
 ) {
   const {
     stateReference: { value$, useValue, dispatchUpdate },
-    cleanUp,
   } = useAtomicStateInternal(
     identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>,
   );
@@ -349,7 +341,6 @@ export function useAtom<Value, UpdateEvent>(
   const value = useValue();
 
   if (value === EMPTY_VALUE) {
-    cleanUp();
     throw (value$ as Observable<Value | EMPTY_TYPE>)
       .pipe(
         filter((val): val is Value => val !== EMPTY_VALUE),

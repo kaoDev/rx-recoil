@@ -1,7 +1,8 @@
 import { cleanup } from '@testing-library/react';
 import { renderHook } from '@testing-library/react-hooks';
 import { act } from 'react-dom/test-utils';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { atom } from './atom';
 import { createStateContextValue, StateRoot, useAtom } from './core';
 import { useObservablueValue } from './helpers';
@@ -81,6 +82,43 @@ describe('rx-recoil core functionality', () => {
     hook.unmount();
     expect(stateRootValue.stateMap.size).toBe(4);
     hook2.unmount();
+    expect(stateRootValue.stateMap.size).toBe(0);
+  });
+
+  it('should correctly register and cleanup state even when it gets interrupted by other suspense throws', async () => {
+    const syncState = atom('test', { debugKey: 'atom' });
+    const trigger = new Subject<string>();
+    const selectorPromise = trigger.pipe(take(1)).toPromise();
+    const asyncState = selector(() => selectorPromise);
+
+    function useBothStates() {
+      const [syncValue] = useAtom(syncState);
+      const [asyncValue] = useAtom(asyncState);
+
+      return { syncValue, asyncValue };
+    }
+
+    const stateRootValue = createStateContextValue();
+
+    const hook = renderHook(() => useBothStates(), {
+      wrapper: StateRoot,
+      initialProps: { context: stateRootValue },
+    });
+
+    expect(hook.result.current).toBe(undefined);
+    // expect(stateRootValue.stateMap.size).toBe(0);
+    await act(async () => {
+      trigger.next('delayed');
+      await selectorPromise;
+      hook.rerender();
+    });
+    expect(hook.result.current).toEqual({
+      syncValue: 'test',
+      asyncValue: 'delayed',
+    });
+    expect(stateRootValue.stateMap.size).toBe(2);
+
+    hook.unmount();
     expect(stateRootValue.stateMap.size).toBe(0);
   });
 
