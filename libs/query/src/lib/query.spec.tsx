@@ -1,9 +1,9 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
-import { StateRoot } from '@rx-recoil/core';
+import { createStateContextValue, StateRoot } from '@rx-recoil/core';
 import '@testing-library/jest-dom';
-
-import { useQuery, useQueryRaw } from './query';
+import { usePrefetchCallback, useQuery, useQueryRaw } from './query';
+import { act } from 'react-dom/test-utils';
 
 describe('query', () => {
   beforeEach(() => {
@@ -143,6 +143,59 @@ describe('query', () => {
     expect(errorElement).toBeInTheDocument();
 
     spy.mockRestore();
+  });
+
+  it('should use prefetched data for query hook', async () => {
+    const stateRootValue = createStateContextValue();
+    const testPromise1 = new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve('test value 1');
+      });
+    });
+    const fetcher = jest.fn().mockReturnValueOnce(testPromise1);
+
+    function Tester() {
+      const [data] = useQuery<string>('test/1', fetcher);
+
+      return <div>{data}</div>;
+    }
+
+    function Prefetcher() {
+      const prefetch = usePrefetchCallback(fetcher);
+      useEffect(() => {
+        prefetch('test/1');
+      }, [prefetch]);
+
+      return null;
+    }
+
+    const { findByText, rerender, container } = render(
+      <StateRoot context={stateRootValue}>
+        <Suspense fallback={<div>loading...</div>}>
+          <Prefetcher />
+        </Suspense>
+      </StateRoot>,
+    );
+
+    expect(container).toMatchInlineSnapshot(`<div />`);
+    expect(fetcher).toBeCalledTimes(1);
+
+    await act(async () => {
+      await testPromise1;
+    });
+
+    rerender(
+      <StateRoot context={stateRootValue}>
+        <Suspense fallback={<div>loading...</div>}>
+          <Tester></Tester>
+        </Suspense>
+      </StateRoot>,
+    );
+
+    const delayedElement = await findByText('test value 1');
+
+    expect(fetcher).toBeCalledTimes(1);
+    expect(delayedElement).toBeInTheDocument();
   });
 });
 

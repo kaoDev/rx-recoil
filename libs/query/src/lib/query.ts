@@ -8,8 +8,8 @@ import {
   useAtomRaw,
 } from '@rx-recoil/core';
 import { useCallback, useEffect } from 'react';
-import { Observable, Subject } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
+import { filter, mergeMap } from 'rxjs/operators';
 
 interface ValidResult<Value> {
   value: Value;
@@ -24,11 +24,16 @@ interface ErrorResult {
 type QueryResult<Value> = ValidResult<Value> | ErrorResult;
 interface QueryState<Value> {
   selector: SelectorDefinition<QueryResult<Value> | EMPTY_TYPE>;
-  update$: Subject<Promise<Value>>;
+  update$: Subject<Promise<Value> | undefined>;
   runningRequest?: Promise<Value>;
 }
 
 const queryRegistry = atom(() => new Map<string, QueryState<unknown>>());
+const prefetchRegistry = atom(
+  () => new Map<string, { p: Promise<unknown>; ts: number }>(),
+);
+
+const DEFAULT_CACHE_TIME = 60000;
 
 function createQuerySelector<Value>(
   value$: Observable<QueryResult<Value>>,
@@ -49,20 +54,20 @@ function createQuerySelector<Value>(
 function useQueryState<Value>(
   key: string,
   fetcher: (key: string) => Promise<Value>,
-  config: {
-    initialData?: Value;
-    ttl: number;
-  },
+  ttl: number,
+  initialData?: Value,
 ) {
   const queries = useAtomRaw(queryRegistry)[0];
+  const [prefetchPromises] = useAtom(prefetchRegistry);
 
   let queryState = queries.get(key) as QueryState<Value> | undefined;
 
   if (!queryState) {
-    const update$ = new Subject<Promise<Value>>();
+    const update$ = new BehaviorSubject<Promise<Value> | undefined>(undefined);
 
     const value$: Observable<QueryResult<Value>> = update$.pipe(
-      switchMap((promise) => {
+      filter((promise): promise is Promise<Value> => promise !== undefined),
+      mergeMap((promise) => {
         function cleanUp() {
           if (queryState?.runningRequest === promise) {
             queryState.runningRequest = undefined;
@@ -81,10 +86,16 @@ function useQueryState<Value>(
       }),
     );
 
-    const querySelector = createQuerySelector(value$, key, config.initialData);
+    const querySelector = createQuerySelector(value$, key, initialData);
 
     queryState = { selector: querySelector, update$ };
     queries.set(key, queryState as QueryState<unknown>);
+
+    const prefetched = prefetchPromises.get(key);
+    if (prefetched && prefetched.ts - Date.now() < ttl) {
+      queryState.runningRequest = prefetched.p as Promise<Value>;
+      queryState!.update$.next(prefetched.p as Promise<Value>);
+    }
   }
 
   const refetch = useCallback(() => {
@@ -150,19 +161,22 @@ type QueryRawResult<Value> =
 export function useQueryRaw<Value>(
   queryId: string | (() => string),
   fetcher: (key: string) => Promise<Value>,
-  config: {
+  {
+    initialData,
+    ttl = DEFAULT_CACHE_TIME,
+  }: {
     initialData?: Value;
-    ttl: number;
-  } = { ttl: 5000 },
+    ttl?: number;
+  } = {},
 ): QueryRawResult<Value> {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, refetch } = useQueryState(key, fetcher, config);
+  const { queryState, refetch } = useQueryState(key, fetcher, ttl, initialData);
 
   const [queryValue] = useAtomRaw(queryState.selector);
 
   useEffect(() => {
-    startRequestIfNecessary(refetch, queryState, queryValue, config.ttl);
-  }, [config.ttl, queryState, queryValue, refetch]);
+    startRequestIfNecessary(refetch, queryState, queryValue, ttl);
+  }, [ttl, queryState, queryValue, refetch]);
 
   if (queryValue === EMPTY_VALUE) {
     return { refetch, data: undefined, loading: true, error: undefined };
@@ -179,17 +193,20 @@ export function useQueryRaw<Value>(
 export function useQuery<Value>(
   queryId: string | (() => string),
   fetcher: (key: string) => Promise<Value>,
-  config: {
+  {
+    initialData,
+    ttl = DEFAULT_CACHE_TIME,
+  }: {
     initialData?: Value;
-    ttl: number;
-  } = { ttl: 5000 },
+    ttl?: number;
+  } = {},
 ): [value: Value, refetch: () => Promise<Value>] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, refetch } = useQueryState(key, fetcher, config);
+  const { queryState, refetch } = useQueryState(key, fetcher, ttl, initialData);
 
   try {
     const [queryValue] = useAtom(queryState.selector);
-    startRequestIfNecessary(refetch, queryState, queryValue, config.ttl);
+    startRequestIfNecessary(refetch, queryState, queryValue, ttl);
 
     if (queryValue.error) {
       throw queryValue.error;
@@ -198,8 +215,22 @@ export function useQuery<Value>(
     return [queryValue.value, refetch];
   } catch (promiseOrError) {
     if (promiseOrError instanceof Promise) {
-      startRequestIfNecessary(refetch, queryState, EMPTY_VALUE, config.ttl);
+      startRequestIfNecessary(refetch, queryState, EMPTY_VALUE, ttl);
     }
     throw promiseOrError;
   }
+}
+
+export function usePrefetchCallback(
+  fetcher: (key: string) => Promise<unknown>,
+) {
+  const [prefetchPromises] = useAtom(prefetchRegistry);
+
+  return useCallback(
+    (queryId: string | (() => string)) => {
+      const key = typeof queryId !== 'string' ? queryId() : queryId;
+      prefetchPromises.set(key, { p: fetcher(key), ts: Date.now() });
+    },
+    [fetcher, prefetchPromises],
+  );
 }
