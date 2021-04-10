@@ -225,16 +225,19 @@ export function usePrefetchCallback(
   fetcher: (key: string) => Promise<unknown>,
 ) {
   const [prefetchPromises] = useAtom(prefetchRegistry);
+  const [queries] = useAtom(queryRegistry);
 
   return useCallback(
     (queryId: string | (() => string), ttl = DEFAULT_CACHE_TIME) => {
       const key = typeof queryId !== 'string' ? queryId() : queryId;
       const prefetched = prefetchPromises.get(key);
-      if (prefetched && Date.now() - prefetched.ts < ttl) {
+      const query = queries.get(key);
+
+      if (query || (prefetched && Date.now() - prefetched.ts < ttl)) {
         return;
       }
       prefetchPromises.set(key, { p: fetcher(key), ts: Date.now() });
     },
-    [fetcher, prefetchPromises],
+    [fetcher, prefetchPromises, queries],
   );
 }

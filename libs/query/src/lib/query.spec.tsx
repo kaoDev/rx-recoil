@@ -149,10 +149,10 @@ describe('query', () => {
     const stateRootValue = createStateContextValue();
     const testPromise1 = new Promise<string>((resolve) => {
       setTimeout(() => {
-        resolve('test value 1');
+        resolve('test value');
       });
     });
-    const fetcher = jest.fn().mockReturnValueOnce(testPromise1);
+    const fetcher = jest.fn().mockReturnValue(testPromise1);
 
     function Tester() {
       const [data] = useQuery<string>('test/1', fetcher);
@@ -171,7 +171,7 @@ describe('query', () => {
       return null;
     }
 
-    const { findByText, rerender, container } = render(
+    const { findByText, rerender } = render(
       <StateRoot context={stateRootValue}>
         <Suspense fallback={<div>loading...</div>}>
           <Prefetcher />
@@ -179,7 +179,6 @@ describe('query', () => {
       </StateRoot>,
     );
 
-    expect(container).toMatchInlineSnapshot(`<div />`);
     expect(fetcher).toBeCalledTimes(1);
 
     await act(async () => {
@@ -189,6 +188,60 @@ describe('query', () => {
     rerender(
       <StateRoot context={stateRootValue}>
         <Suspense fallback={<div>loading...</div>}>
+          <Tester></Tester>
+        </Suspense>
+      </StateRoot>,
+    );
+
+    const delayedElement = await findByText('test value');
+
+    expect(fetcher).toBeCalledTimes(1);
+    expect(delayedElement).toBeInTheDocument();
+  });
+
+  it('should not prefetch if da is already queried', async () => {
+    const stateRootValue = createStateContextValue();
+    const testPromise1 = new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve('test value 1');
+      });
+    });
+    const fetcher = jest.fn().mockReturnValue(testPromise1);
+
+    function Tester() {
+      const [data] = useQuery<string>('test/1', fetcher);
+
+      return <div>{data}</div>;
+    }
+
+    function Prefetcher() {
+      const prefetch = usePrefetchCallback(fetcher);
+      useEffect(() => {
+        prefetch('test/1');
+      }, [prefetch]);
+
+      return null;
+    }
+
+    const { findByText, rerender } = render(
+      <StateRoot context={stateRootValue}>
+        <Suspense fallback={<div>loading...</div>}>
+          <Tester></Tester>
+          <Prefetcher />
+        </Suspense>
+      </StateRoot>,
+    );
+
+    expect(fetcher).toBeCalledTimes(1);
+
+    await act(async () => {
+      await testPromise1;
+    });
+
+    rerender(
+      <StateRoot context={stateRootValue}>
+        <Suspense fallback={<div>loading...</div>}>
+          <Prefetcher />
           <Tester></Tester>
         </Suspense>
       </StateRoot>,
