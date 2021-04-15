@@ -114,4 +114,5 @@ export type InternalRegisteredState<Value, UpdateEvent> = {
   dependencies?: Set<InternalRegisteredState<unknown, unknown>>;
   onUnmount?: () => void;
   refs: Set<UsageKey>;
+  suspensePromise?: Promise<Value>;
 };

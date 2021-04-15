@@ -1,11 +1,10 @@
 import { cleanup } from '@testing-library/react';
 import { renderHook } from '@testing-library/react-hooks';
 import { act } from 'react-dom/test-utils';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { Subject } from 'rxjs';
 import { take } from 'rxjs/operators';
 import { atom } from './atom';
 import { createStateContextValue, StateRoot, useAtom } from './core';
-import { useObservablueValue } from './helpers';
 import { selector } from './selector';
 
 describe('rx-recoil core functionality', () => {
@@ -247,25 +246,6 @@ describe('rx-recoil core functionality', () => {
 
     expect(result.error).toMatchInlineSnapshot(
       `[Error: rx-recoil StateRoot context is missing]`,
-    );
-  });
-
-  it('should provide value access to observables', async () => {
-    const source$ = new BehaviorSubject('test');
-    const onError = jest.fn();
-    const { result } = renderHook(() => useObservablueValue(source$, onError));
-
-    expect(result.current).toBe('test');
-    act(() => {
-      source$.next('test2');
-    });
-    expect(result.current).toBe('test2');
-    act(() => {
-      source$.error(new Error('test crash'));
-    });
-    expect(onError).toBeCalledWith(
-      Error('test crash'),
-      'Exception in atom value stream',
     );
   });
 });

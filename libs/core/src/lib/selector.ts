@@ -1,6 +1,6 @@
 import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs';
 import { map, mergeMap } from 'rxjs/operators';
-import { isPromise, isSubscribable, useObservablueValue } from './helpers';
+import { createUseValueHook, isPromise, isSubscribable } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
   createPublicStateReadAccess,
@@ -177,13 +177,17 @@ export function createSelector<Value, Update>(
           reportError(report)(error, `Exception in selector value stream`),
       );
 
+  const {
+    useValue,
+    subscription: valueHookSubscription,
+  } = createUseValueHook(selectorDefinition.key, value$, (e) =>
+    onError(e, `Exception in selector value stream`),
+  );
+
   function onUnmount() {
     subscription.unsubscribe();
+    valueHookSubscription.unsubscribe();
     initialValueSubscription?.unsubscribe();
-  }
-
-  function useValue() {
-    return useObservablueValue(value$, onError);
   }
 
   let dispatchUpdate: undefined | ((change: Update) => void) = undefined;

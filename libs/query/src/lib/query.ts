@@ -6,8 +6,9 @@ import {
   SelectorDefinition,
   useAtom,
   useAtomRaw,
+  useIsomorphicLayoutEffect,
 } from '@rx-recoil/core';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { filter, mergeMap } from 'rxjs/operators';
 
@@ -26,6 +27,7 @@ interface QueryState<Value> {
   selector: SelectorDefinition<QueryResult<Value> | EMPTY_TYPE>;
   update$: Subject<Promise<Value> | undefined>;
   runningRequest?: Promise<Value>;
+  lastTimestamp: number;
 }
 
 const queryRegistry = atom(() => new Map<string, QueryState<unknown>>());
@@ -69,9 +71,8 @@ function useQueryState<Value>(
       filter((promise): promise is Promise<Value> => promise !== undefined),
       mergeMap((promise) => {
         function cleanUp() {
-          if (queryState?.runningRequest === promise) {
-            queryState.runningRequest = undefined;
-          }
+          queryState!.lastTimestamp = Date.now();
+          queryState!.runningRequest = undefined;
         }
 
         return promise
@@ -88,20 +89,25 @@ function useQueryState<Value>(
 
     const querySelector = createQuerySelector(value$, key, initialData);
 
-    queryState = { selector: querySelector, update$ };
+    queryState = { selector: querySelector, update$, lastTimestamp: 0 };
     queries.set(key, queryState as QueryState<unknown>);
 
     const prefetched = prefetchPromises.get(key);
     if (prefetched && Date.now() - prefetched.ts < ttl) {
       queryState.runningRequest = prefetched.p as Promise<Value>;
+      queryState.lastTimestamp = prefetched.ts;
       queryState!.update$.next(prefetched.p as Promise<Value>);
     }
   }
 
   const refetch = useCallback(() => {
+    if (queryState!.runningRequest) {
+      return queryState!.runningRequest;
+    }
     const fetchPromise = fetcher(key);
     queryState!.runningRequest = fetchPromise;
     queryState!.update$.next(fetchPromise);
+    queryState!.lastTimestamp = Date.now();
 
     return fetchPromise;
   }, [queryState, fetcher, key]);
@@ -127,13 +133,9 @@ function shouldFetch(
 function startRequestIfNecessary<Value>(
   refetch: () => void,
   queryState: QueryState<Value>,
-  queryValue: QueryResult<Value> | EMPTY_TYPE,
   ttl: number,
 ) {
-  const timestamp =
-    queryValue === EMPTY_VALUE ? undefined : queryValue.timestamp;
-
-  if (shouldFetch(queryState.runningRequest, timestamp, ttl)) {
+  if (shouldFetch(queryState.runningRequest, queryState.lastTimestamp, ttl)) {
     refetch();
   }
 }
@@ -174,9 +176,9 @@ export function useQueryRaw<Value>(
 
   const [queryValue] = useAtomRaw(queryState.selector);
 
-  useEffect(() => {
-    startRequestIfNecessary(refetch, queryState, queryValue, ttl);
-  }, [ttl, queryState, queryValue, refetch]);
+  useIsomorphicLayoutEffect(() => {
+    startRequestIfNecessary(refetch, queryState, ttl);
+  }, [ttl, queryState, refetch]);
 
   if (queryValue === EMPTY_VALUE) {
     return { refetch, data: undefined, loading: true, error: undefined };
@@ -203,10 +205,10 @@ export function useQuery<Value>(
 ): [value: Value, refetch: () => Promise<Value>] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
   const { queryState, refetch } = useQueryState(key, fetcher, ttl, initialData);
+  startRequestIfNecessary(refetch, queryState, ttl);
 
   try {
     const [queryValue] = useAtom(queryState.selector);
-    startRequestIfNecessary(refetch, queryState, queryValue, ttl);
 
     if (queryValue.error) {
       throw queryValue.error;
@@ -215,9 +217,12 @@ export function useQuery<Value>(
     return [queryValue.value, refetch];
   } catch (promiseOrError) {
     if (promiseOrError instanceof Promise) {
-      startRequestIfNecessary(refetch, queryState, EMPTY_VALUE, ttl);
+      throw promiseOrError;
     }
-    throw promiseOrError;
+    if (promiseOrError instanceof Error) {
+      throw promiseOrError;
+    }
+    throw new Error(promiseOrError);
   }
 }
 

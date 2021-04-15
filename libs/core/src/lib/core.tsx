@@ -2,7 +2,6 @@ import React, {
   createContext,
   ReactNode,
   useContext,
-  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -29,6 +28,7 @@ import {
   UsageKey,
   SubscribableOrPromise,
 } from './types';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 function cleanupUsage({
   rootState,
@@ -246,26 +246,13 @@ export function useAtomicState<Value, UpdateEvent>(
 export function useAtomicState<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
-  return useAtomicStateInternal(
+  const stateReference = useAtomicStateInternal(
     identifier as AtomDefinition<Value, UpdateEvent>,
-  ).stateReference;
+  );
+
+  return stateReference.state;
 }
 
-function useAtomicStateInternal<Value>(
-  identifier: SelectorDefinition<Value>,
-): {
-  stateReference: ReadOnlyState<UnpackedAsyncValue<Value>>;
-  cleanUp: () => void;
-};
-function useAtomicStateInternal<Value, UpdateEvent>(
-  identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
-): {
-  stateReference: MutatableState<UnpackedAsyncValue<Value>, UpdateEvent>;
-  cleanUp: () => void;
-};
-function useAtomicStateInternal<Value, UpdateEvent>(
-  identifier: AtomDefinition<Value, UpdateEvent>,
-): { stateReference: MutatableState<Value, UpdateEvent> };
 function useAtomicStateInternal<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
@@ -273,7 +260,7 @@ function useAtomicStateInternal<Value, UpdateEvent>(
   if (!getStateObject) {
     throw new Error('rx-recoil StateRoot context is missing');
   }
-  const [usageId] = useState(() => Symbol(`usage:${identifier.debugKey}`));
+  const usageId = useRef(Symbol(`usage:${identifier.debugKey}`));
   const stateReference = useRef<InternalRegisteredState<Value, UpdateEvent>>();
   const registered = useRef(false);
 
@@ -281,23 +268,24 @@ function useAtomicStateInternal<Value, UpdateEvent>(
     !stateReference.current ||
     stateReference.current.state.key !== identifier.key
   ) {
-    stateReference.current = getStateObject(identifier, usageId);
+    stateReference.current = getStateObject(identifier, usageId.current);
+    registered.current = false;
   }
 
   if (!registered.current) {
-    stateReference.current?.refs.delete(usageId);
+    stateReference.current?.refs.delete(usageId.current);
   }
 
   const registeredStateObject = stateReference.current;
 
-  useEffect(() => {
-    registerStateUsage(registeredStateObject, usageId);
+  useIsomorphicLayoutEffect(() => {
+    registerStateUsage(registeredStateObject, usageId.current);
     registered.current = true;
 
     return () => {
       cleanupUsage({
         rootState: registeredStateObject,
-        usageId,
+        usageId: usageId.current,
         stateMap: getStateObject.stateMap,
         stateSleepCache: getStateObject.stateSleepCache,
       });
@@ -305,13 +293,10 @@ function useAtomicStateInternal<Value, UpdateEvent>(
   }, [
     getStateObject.stateMap,
     getStateObject.stateSleepCache,
-    registeredStateObject,
-    usageId,
+    registeredStateObject.state.key,
   ]);
 
-  return {
-    stateReference: stateReference.current.state,
-  };
+  return stateReference.current;
 }
 
 export function useAtom<Value>(
@@ -332,24 +317,31 @@ export function useAtom<Value, UpdateEvent>(
 export function useAtom<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
-  const {
-    stateReference: { value$, useValue, dispatchUpdate },
-  } = useAtomicStateInternal(
+  const stateReference = useAtomicStateInternal(
     identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>,
   );
 
-  const value = useValue();
+  const value = stateReference.state.useValue();
 
   if (value === EMPTY_VALUE) {
-    throw (value$ as Observable<Value | EMPTY_TYPE>)
-      .pipe(
-        filter((val): val is Value => val !== EMPTY_VALUE),
-        take(1),
-      )
-      .toPromise();
+    if (!stateReference.suspensePromise) {
+      stateReference.suspensePromise = (stateReference.state
+        .value$ as Observable<Value | EMPTY_TYPE>)
+        .pipe(
+          filter((val): val is Value => val !== EMPTY_VALUE),
+          take(1),
+        )
+        .toPromise();
+    }
+    throw stateReference.suspensePromise;
   }
 
-  return [value, dispatchUpdate] as const;
+  stateReference.suspensePromise = undefined;
+
+  return [
+    value,
+    (stateReference.state as MutatableState<Value, UpdateEvent>).dispatchUpdate,
+  ] as const;
 }
 
 export function useAtomRaw<Value>(

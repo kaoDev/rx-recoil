@@ -217,9 +217,9 @@ describe('rx-recoil selector functionality', () => {
   });
 
   it('should provide access to complex async promise data', async () => {
-    const testAtom = atom(
-      new Promise<string>((resolve) => resolve('test')),
-    );
+    const atomTrigger = new Subject<string>();
+    const atomPromise = atomTrigger.toPromise();
+    const testAtom = atom(atomPromise);
     const testSelector = selector(({ get }) => {
       return get(testAtom);
     });
@@ -240,7 +240,14 @@ describe('rx-recoil selector functionality', () => {
     });
 
     expect(result.current).toBe(undefined);
-    await new Promise((res) => setTimeout(res, 1));
+
+    await act(async () => {
+      atomTrigger.next('test');
+      atomTrigger.complete();
+      await atomPromise;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    });
+
     expect(result.current[0]).toBe('test');
 
     await act(async () => {

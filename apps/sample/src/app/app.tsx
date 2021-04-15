@@ -1,9 +1,11 @@
 import { createStateContextValue, StateRoot } from '@rx-recoil/core';
 import React, { useEffect, useState } from 'react';
 import styles from './app.module.css';
+import { CounterBenchmark } from './CounterBenchmark';
 import { Counter } from './Counter';
 import { Temperature } from './Temperature';
 import { TodoQuery } from './TodoQuery';
+import { QueryBenchmark } from './QueryBenchmark';
 
 function ExampleOption({
   label,
@@ -34,7 +36,10 @@ function ExampleOption({
   );
 }
 
-const stateContext = createStateContextValue();
+const stateContext = createStateContextValue((error) => {
+  // eslint-disable-next-line no-console
+  console.error('rx-recoil error', error);
+});
 
 export function App() {
   const [visibleSample, setVisibleSample] = useState('temperature');
@@ -67,10 +72,35 @@ export function App() {
               value="todoQuery"
               label="Load remote data with useQuery"
             />
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="counterBenchmark"
+              label="Counter benchmark"
+            />
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="queryBenchmark"
+              label="Query benchmark"
+            />
+            <ExampleOption
+              {...{ setVisibleSample, visibleSample }}
+              value="showAll"
+              label="Everything at once"
+            />
           </section>
-          {visibleSample === 'temperature' && <Temperature />}
-          {visibleSample === 'counter' && <Counter />}
-          {visibleSample === 'todoQuery' && <TodoQuery />}
+          {(visibleSample === 'showAll' || visibleSample === 'temperature') && (
+            <Temperature />
+          )}
+          {(visibleSample === 'showAll' || visibleSample === 'counter') && (
+            <Counter />
+          )}
+          {(visibleSample === 'showAll' || visibleSample === 'todoQuery') && (
+            <TodoQuery />
+          )}
+          {(visibleSample === 'showAll' ||
+            visibleSample === 'counterBenchmark') && <CounterBenchmark />}
+          {(visibleSample === 'showAll' ||
+            visibleSample === 'queryBenchmark') && <QueryBenchmark />}
         </main>
       </div>
     </StateRoot>

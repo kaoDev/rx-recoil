@@ -1,5 +1,5 @@
 import { BehaviorSubject } from 'rxjs';
-import { useObservablueValue } from './helpers';
+import { createUseValueHook } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
   AtomDefinition,
@@ -67,9 +67,11 @@ export function createAtom<Value, UpdateEvent = Value>(
 
   const onError = reportError(report);
 
-  function useValue() {
-    return useObservablueValue(value$, onError);
-  }
+  const { useValue, subscription } = createUseValueHook(
+    atomDefinition.key,
+    value$,
+    (e) => onError(e, `Exception in atom value stream`),
+  );
 
   const atom: MutatableState<Value, UpdateEvent> = {
     useValue,
@@ -80,5 +82,9 @@ export function createAtom<Value, UpdateEvent = Value>(
     volatile: atomDefinition.volatile,
   };
 
-  return { state: atom, refs: new Set() };
+  return {
+    state: atom,
+    refs: new Set(),
+    onUnmount: () => subscription.unsubscribe(),
+  };
 }
