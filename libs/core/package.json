@@ -1,6 +1,7 @@
 {
   "name": "@rx-recoil/core",
-  "version": "0.0.16",
+  "version": "0.0.17",
+  "sideEffects": false,
   "license": "MIT",
   "peerDependencies": {
     "react": ">=16.8.0",

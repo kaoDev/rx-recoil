@@ -1,6 +1,7 @@
 {
   "name": "@rx-recoil/query",
-  "version": "0.0.16",
+  "version": "0.0.17",
+  "sideEffects": false,
   "peerDependencies": {
     "rxjs": ">=6",
     "@rx-recoil/core": "*"

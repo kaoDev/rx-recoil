@@ -1,6 +1,7 @@
 {
   "name": "@rx-recoil/persistence",
-  "version": "0.0.16",
+  "version": "0.0.17",
+  "sideEffects": false,
   "license": "MIT",
   "peerDependencies": {
     "rxjs": ">=6",

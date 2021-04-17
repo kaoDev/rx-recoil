@@ -108,6 +108,17 @@ export function persistedAtom<Value>(
 ): AtomDefinition<Value | EMPTY_TYPE, Value> {
   const storageAccess = createPersistentCache(config);
 
+  return persistedAtomFromStoreAccess(storageAccess, config);
+}
+
+export function persistedAtomFromStoreAccess<Value>(
+  storageAccess: PersistentCache<Value>,
+  config?: {
+    debugKey?: string;
+    report?: ErrorReporter;
+    fallbackValue?: Value;
+  },
+): AtomDefinition<Value | EMPTY_TYPE, Value> {
   const mounted$ = new Subject<void>();
   const persistQueue = new Subject<Value>();
 
@@ -116,7 +127,7 @@ export function persistedAtom<Value>(
       persistQueue.next(newValue);
       return newValue;
     },
-    debugKey: config.debugKey,
+    debugKey: config?.debugKey,
   });
 
   state.onMount = async ({ set }) => {
@@ -133,11 +144,13 @@ export function persistedAtom<Value>(
 
       set(state, initialValue);
     } catch (error) {
-      reportError(config.report)(
+      reportError(config?.report)(
         error,
         'failed to initialize persisted state from storage',
       );
-      set(state, config.fallbackValue);
+      if (config?.fallbackValue) {
+        set(state, config.fallbackValue);
+      }
     }
 
     mounted$.next();
