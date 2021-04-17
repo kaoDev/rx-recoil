@@ -1,5 +1,12 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { BehaviorSubject, Subscribable } from 'rxjs';
+import { useCallback, useState } from 'react';
+import {
+  asyncScheduler,
+  BehaviorSubject,
+  Observable,
+  Subscribable,
+} from 'rxjs';
+import { filter, observeOn, take } from 'rxjs/operators';
+import { EMPTY_TYPE, EMPTY_VALUE } from './types';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
@@ -14,26 +21,6 @@ export function isSubscribable<T>(value: unknown): value is Subscribable<T> {
   return !!value && typeof (value as any).subscribe === 'function';
 }
 
-export function useObservableValue<Value>(
-  source$: BehaviorSubject<Value>,
-  onError: (error: unknown, fallbackMessage: string) => void,
-) {
-  const [state, setState] = useState(() => source$.value);
-
-  useIsomorphicLayoutEffect(() => {
-    const subscription = source$.subscribe(
-      (value) => {
-        setState(value);
-      },
-      (error) => onError(error, `Exception in atom value stream`),
-    );
-
-    return () => subscription.unsubscribe();
-  }, [source$, onError]);
-
-  return state;
-}
-
 function useForceUpdate(): () => void {
   const [, dispatch] = useState<unknown>(Object.create(null));
 
@@ -45,59 +32,63 @@ function useForceUpdate(): () => void {
 }
 
 export function createUseValueHook<Value>(
-  stateId: symbol,
   value$: BehaviorSubject<Value>,
   onError: (error: Error) => void,
 ) {
-  const listeners = new Set<(change: Value) => void>();
+  const listeners = new Set<() => void>();
 
-  const subscription = value$.subscribe(
-    (value) => {
+  let initialValuePromise: Promise<unknown> | null = null;
+  function getInitialValuePromise() {
+    if (!initialValuePromise) {
+      initialValuePromise = (value$ as Observable<unknown>)
+        .pipe(
+          filter((v) => v !== EMPTY_VALUE),
+          take(1),
+        )
+        .toPromise();
+    }
+    return initialValuePromise;
+  }
+
+  const subscription = value$.pipe(observeOn(asyncScheduler)).subscribe(
+    () => {
       for (const listener of listeners) {
-        listener(value);
+        listener();
       }
     },
     (error) => onError(error),
   );
 
-  function useValue() {
+  function useValue(): Exclude<Value, EMPTY_TYPE> {
     const forceUpdate = useForceUpdate();
-    const stateRef = useRef<symbol | null>(null);
-    const mounted = useRef(false);
-    const listener = useRef<((change: Value) => void) | null>(null);
 
-    const snapshot = useRef(value$.value);
-
-    if (stateId !== stateRef.current) {
-      stateRef.current = stateId;
-      snapshot.current = value$.value;
-      if (listener.current) {
-        listeners.delete(listener.current);
-      }
-      listener.current = (update: Value) => {
-        if (update !== snapshot.current) {
-          snapshot.current = update;
-        }
-        if (mounted.current) {
-          forceUpdate();
-        }
-      };
-      listeners.add(listener.current);
+    if ((value$.value as any) === EMPTY_VALUE) {
+      throw getInitialValuePromise();
     }
+    initialValuePromise = null;
 
-    useLayoutEffect(() => {
-      mounted.current = true;
+    useIsomorphicLayoutEffect(() => {
+      listeners.add(forceUpdate);
       return () => {
-        mounted.current = false;
-        if (listener.current) {
-          listeners.delete(listener.current);
-        }
+        listeners.delete(forceUpdate);
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [listeners, forceUpdate]);
+    }, [forceUpdate]);
 
-    return snapshot.current;
+    return value$.value as Exclude<Value, EMPTY_TYPE>;
   }
 
-  return { useValue, subscription };
+  function useValueRaw() {
+    const forceUpdate = useForceUpdate();
+
+    useIsomorphicLayoutEffect(() => {
+      listeners.add(forceUpdate);
+      return () => {
+        listeners.delete(forceUpdate);
+      };
+    }, [forceUpdate]);
+
+    return value$.value;
+  }
+
+  return { useValue, useValueRaw, subscription };
 }

@@ -58,10 +58,11 @@ describe('rx-recoil selector functionality', () => {
       },
     );
 
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
     });
     act(() => result.current[1]('updated'));
+    rerender();
     expect(result.current[0]).toBe('updatedSelector');
   });
 
@@ -80,7 +81,7 @@ describe('rx-recoil selector functionality', () => {
     const testAtom = atom('test');
     const testSelector = selector(({ get }) => get(testAtom) + 'Selector');
 
-    const { result } = renderHook(
+    const { result, rerender } = renderHook(
       () => {
         return { selector: useAtom(testSelector), atom: useAtom(testAtom) };
       },
@@ -92,6 +93,7 @@ describe('rx-recoil selector functionality', () => {
 
     act(() => result.current.atom[1]('changedAtom'));
 
+    rerender();
     expect(result.current.atom[0]).toBe('changedAtom');
     expect(result.current.selector[0]).toBe('changedAtomSelector');
   });
@@ -110,13 +112,14 @@ describe('rx-recoil selector functionality', () => {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
     expect(result.current[0]).toBe('testSelector');
 
     act(() => updateAtom('changedAtom'));
+    rerender();
     expect(result.current[0]).toBe('changedAtomSelector');
   });
 
@@ -125,7 +128,7 @@ describe('rx-recoil selector functionality', () => {
     const selectorPromise = trigger.pipe(take(1)).toPromise();
     const testSelector = selector(() => selectorPromise);
 
-    const { result } = renderHook(() => useAtomRaw(testSelector), {
+    const { result, rerender } = renderHook(() => useAtomRaw(testSelector), {
       wrapper: StateRoot,
     });
     expect(result.current[0]).toBe(EMPTY_VALUE);
@@ -133,6 +136,7 @@ describe('rx-recoil selector functionality', () => {
       trigger.next('delayed');
       await selectorPromise;
     });
+    rerender();
     expect(result.current[0]).toBe('delayed');
   });
 
@@ -141,7 +145,7 @@ describe('rx-recoil selector functionality', () => {
     const selectorPromise = trigger.pipe(take(1)).toPromise();
     const testSelector = selector(() => selectorPromise);
 
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
     });
     expect(result.current).toBe(undefined);
@@ -149,6 +153,7 @@ describe('rx-recoil selector functionality', () => {
       trigger.next('delayed');
       await selectorPromise;
     });
+    rerender();
     expect(result.current[0]).toBe('delayed');
   });
 
@@ -157,7 +162,7 @@ describe('rx-recoil selector functionality', () => {
     const selectorPromise = trigger.pipe(take(1)).toPromise();
     const testSelector = selector(() => trigger);
 
-    const { result } = renderHook(() => useAtomRaw(testSelector), {
+    const { result, rerender } = renderHook(() => useAtomRaw(testSelector), {
       wrapper: StateRoot,
     });
     expect(result.current[0]).toBe(EMPTY_VALUE);
@@ -165,6 +170,7 @@ describe('rx-recoil selector functionality', () => {
       trigger.next('delayed');
       await selectorPromise;
     });
+    rerender();
     expect(result.current[0]).toBe('delayed');
   });
 
@@ -173,7 +179,7 @@ describe('rx-recoil selector functionality', () => {
     const selectorPromise = trigger.pipe(take(1)).toPromise();
     const testSelector = selector(() => trigger);
 
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
     });
     // suspended current value is undefined
@@ -182,6 +188,7 @@ describe('rx-recoil selector functionality', () => {
       trigger.next('delayed');
       await selectorPromise;
     });
+    rerender();
     expect(result.current[0]).toBe('delayed');
   });
 
@@ -203,7 +210,7 @@ describe('rx-recoil selector functionality', () => {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
@@ -213,6 +220,7 @@ describe('rx-recoil selector functionality', () => {
     await act(async () => {
       updateAtom('test test');
     });
+    rerender();
     expect(result.current[0]).toBe(9);
   });
 
@@ -234,7 +242,7 @@ describe('rx-recoil selector functionality', () => {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
-    const { result } = renderHook(() => useAtom(testSelector), {
+    const { result, rerender } = renderHook(() => useAtom(testSelector), {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
@@ -245,9 +253,8 @@ describe('rx-recoil selector functionality', () => {
       atomTrigger.next('test');
       atomTrigger.complete();
       await atomPromise;
-      await new Promise((resolve) => setTimeout(resolve, 1));
     });
-
+    rerender();
     expect(result.current[0]).toBe('test');
 
     await act(async () => {
@@ -258,6 +265,7 @@ describe('rx-recoil selector functionality', () => {
       atomTrigger.complete();
       await atomPromise;
     });
+    rerender();
     expect(result.current[0]).toBe('delayed value');
   });
 

@@ -74,7 +74,7 @@ export interface SelectorDefinition<Value> extends BaseStateDefinition {
   read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;
-  initialValue?: Value;
+  initialValue?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
 }
 
 export interface MutatableSelectorDefinition<Value, Update>
@@ -84,11 +84,12 @@ export interface MutatableSelectorDefinition<Value, Update>
   write: (stateAccess: StateWriteAccess, change: Update) => void;
   onMount?: (stateAccess: StateWriteAccess) => OptionalCleanup;
   volatile?: boolean;
-  initialValue?: Value;
+  initialValue?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
 }
 
 export interface ReadOnlyState<Value> extends BaseStateDefinition {
-  useValue: () => Value;
+  useValue: () => Exclude<Value, EMPTY_TYPE>;
+  useValueRaw: () => Value;
   value$: ReadonlyStateValue<Value>;
 }
 
@@ -114,5 +115,6 @@ export type InternalRegisteredState<Value, UpdateEvent> = {
   dependencies?: Set<InternalRegisteredState<unknown, unknown>>;
   onUnmount?: () => void;
   refs: Set<UsageKey>;
-  suspensePromise?: Promise<Value>;
 };
+
+export type Unpacked<T> = T extends SubscribableOrPromise<infer V> ? V : T;

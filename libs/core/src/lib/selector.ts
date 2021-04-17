@@ -25,7 +25,7 @@ import {
 interface SelectorOptions<Value> {
   debugKey?: string;
   volatile?: boolean;
-  initialValue?: Value;
+  initialValue?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
 }
 
 // read-only selector
@@ -124,10 +124,14 @@ export function createSelector<Value, Update>(
 
   const initialValue = selectorDefinition.read(subscribingStateAccess);
 
+  const fallback = isPromise(selectorDefinition.initialValue)
+    ? EMPTY_VALUE
+    : selectorDefinition.initialValue ?? EMPTY_VALUE;
+
   const value$ = new BehaviorSubject(
     initialValueFromSleep ??
       (isPromise(initialValue) || isSubscribable(initialValue)
-        ? selectorDefinition.initialValue ?? EMPTY_VALUE
+        ? fallback
         : initialValue),
   );
   const onError = reportError(report);
@@ -179,8 +183,9 @@ export function createSelector<Value, Update>(
 
   const {
     useValue,
+    useValueRaw,
     subscription: valueHookSubscription,
-  } = createUseValueHook(selectorDefinition.key, value$, (e) =>
+  } = createUseValueHook(value$, (e) =>
     onError(e, `Exception in selector value stream`),
   );
 
@@ -208,6 +213,7 @@ export function createSelector<Value, Update>(
     return {
       state: {
         useValue,
+        useValueRaw,
         value$,
         key: selectorDefinition.key,
         dispatchUpdate,
@@ -223,6 +229,7 @@ export function createSelector<Value, Update>(
   return {
     state: {
       useValue,
+      useValueRaw,
       value$,
       key: selectorDefinition.key,
       debugKey: selectorDefinition.debugKey,

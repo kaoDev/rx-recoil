@@ -33,11 +33,14 @@ export interface StorageAccess {
   getItem(key: string): StoredValue | Promise<StoredValue>;
 
   setItem(key: string, value: string): void | Promise<void>;
-
-  removeItem(key: string): void | Promise<void>;
 }
 
-export interface PersistenceOptions<Value> {
+export interface PersistentCache<Value> {
+  getItem(): Value | Promise<Value>;
+  setItem(value: Value): void;
+}
+
+export interface PersistentCacheConfig<Value> {
   key: string;
   storage: StorageAccess;
   version: number;
@@ -49,7 +52,7 @@ export interface PersistenceOptions<Value> {
   report?: ErrorReporter;
 }
 
-export function persistedAtom<Value>({
+export function createPersistentCache<Value>({
   key,
   storage,
   fallbackValue,
@@ -58,22 +61,52 @@ export function persistedAtom<Value>({
   serialize = DEFAULT_PERSISTENCE_SERIALIZE,
   persistencePrefix = '__RX_RECOIL_STATE',
   report,
-  debugKey,
-}: PersistenceOptions<Value>): AtomDefinition<Value | EMPTY_TYPE, Value> {
+}: PersistentCacheConfig<Value>): PersistentCache<Value> {
   const storageKey = `${persistencePrefix}:${key}`;
 
-  function writeValueToStorage(newValue: Value) {
+  let state: Value | EMPTY_TYPE = EMPTY_VALUE;
+
+  function setItem(newValue: Value) {
     try {
       const nextSerialized = serialize(newValue);
       const valueToSave: PersistedValue = {
         version,
         value: nextSerialized,
       };
+      state = newValue;
       return storage.setItem(storageKey, JSON.stringify(valueToSave));
     } catch (error) {
       reportError(report)(error, `failed to store value for ${key}`);
     }
   }
+
+  function getItem() {
+    if (state !== EMPTY_VALUE) {
+      return state;
+    }
+
+    return Promise.all([storage.getItem(storageKey)]).then(([rawString]) => {
+      if (rawString != null) {
+        const rawValue: PersistedValue = JSON.parse(rawString);
+        return deserialize(rawValue.value, rawValue.version);
+      }
+
+      return fallbackValue;
+    });
+  }
+
+  return { getItem, setItem };
+}
+
+export interface PersistenceOptions<Value>
+  extends PersistentCacheConfig<Value> {
+  debugKey?: string;
+}
+
+export function persistedAtom<Value>(
+  config: PersistenceOptions<Value>,
+): AtomDefinition<Value | EMPTY_TYPE, Value> {
+  const storageAccess = createPersistentCache(config);
 
   const mounted$ = new Subject<void>();
   const persistQueue = new Subject<Value>();
@@ -83,43 +116,34 @@ export function persistedAtom<Value>({
       persistQueue.next(newValue);
       return newValue;
     },
-    debugKey,
+    debugKey: config.debugKey,
   });
 
-  state.onMount = ({ set, get }) => {
+  state.onMount = async ({ set }) => {
     const persistenceSubscription = persistQueue
       .pipe(
         distinctUntilChanged(),
         scan((_, nextValue) => nextValue),
         skipUntil(mounted$),
       )
-      .subscribe(writeValueToStorage);
+      .subscribe(storageAccess.setItem);
 
-    return Promise.all([storage.getItem(storageKey)])
-      .then(([rawString]) => {
-        const currentValue = get(state);
+    try {
+      const initialValue = await storageAccess.getItem();
 
-        if (rawString != null) {
-          const rawValue: PersistedValue = JSON.parse(rawString);
-          const parsedValue = deserialize(rawValue.value, rawValue.version);
-          set(state, parsedValue);
-        } else if (currentValue === EMPTY_VALUE) {
-          set(state, fallbackValue);
-        }
-      })
-      .catch((error) => {
-        reportError(report)(
-          error,
-          'failed to initialize persisted state from storage',
-        );
-        set(state, fallbackValue);
-      })
-      .then(() => {
-        mounted$.next();
-        return () => {
-          persistenceSubscription.unsubscribe();
-        };
-      });
+      set(state, initialValue);
+    } catch (error) {
+      reportError(config.report)(
+        error,
+        'failed to initialize persisted state from storage',
+      );
+      set(state, config.fallbackValue);
+    }
+
+    mounted$.next();
+    return () => {
+      persistenceSubscription.unsubscribe();
+    };
   };
 
   return state;

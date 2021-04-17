@@ -9,10 +9,6 @@ import { renderHook } from '@testing-library/react-hooks';
 import { act } from 'react-dom/test-utils';
 import { persistedAtom, StorageAccess } from './persistence';
 
-async function tick() {
-  await new Promise((res) => setTimeout(res));
-}
-
 describe('Persistence atom', () => {
   afterEach(() => {
     cleanup();
@@ -21,7 +17,6 @@ describe('Persistence atom', () => {
   it('should start with the fallback value if no value is stored', async () => {
     const storage: StorageAccess = {
       getItem: jest.fn(() => null),
-      removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
@@ -31,11 +26,11 @@ describe('Persistence atom', () => {
       fallbackValue: 'fallbackValue',
       version: 0,
     });
-    const { result } = renderHook(() => useAtom(persistedState), {
+    const { result, rerender } = renderHook(() => useAtom(persistedState), {
       wrapper: StateRoot,
     });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await tick();
+    rerender();
 
     expect(result.current[0]).toBe('fallbackValue');
   });
@@ -45,7 +40,6 @@ describe('Persistence atom', () => {
       getItem: jest.fn(() =>
         JSON.stringify({ version: 0, value: 'valueFromStore' }),
       ),
-      removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
@@ -61,11 +55,11 @@ describe('Persistence atom', () => {
       deserialize,
     });
 
-    const { result } = renderHook(() => useAtom(persistedState), {
+    const { result, rerender } = renderHook(() => useAtom(persistedState), {
       wrapper: StateRoot,
     });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await tick();
+    rerender();
     expect(result.current[0]).toBe('valueFromStore');
   });
 
@@ -74,7 +68,6 @@ describe('Persistence atom', () => {
       getItem: jest.fn(() =>
         JSON.stringify({ version: 0, value: 'valueFromStore' }),
       ),
-      removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
@@ -85,11 +78,11 @@ describe('Persistence atom', () => {
       version: 0,
     });
 
-    const { result } = renderHook(() => useAtom(persistedState), {
+    const { result, rerender } = renderHook(() => useAtom(persistedState), {
       wrapper: StateRoot,
     });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await tick();
+    rerender();
 
     act(() => {
       result.current[1]('changed state');
@@ -108,7 +101,6 @@ describe('Persistence atom', () => {
       getItem: jest.fn(() =>
         JSON.stringify({ version: 0, value: 'valueFromStore' }),
       ),
-      removeItem: jest.fn(),
       setItem: jest.fn(),
     };
 
@@ -122,12 +114,12 @@ describe('Persistence atom', () => {
 
     const stateContext = createStateContextValue();
 
-    const { result, unmount } = renderHook(() => useAtomRaw(persistedState), {
+    const { result, rerender } = renderHook(() => useAtomRaw(persistedState), {
       wrapper: StateRoot,
       initialProps: { context: stateContext },
     });
     await waitFor(() => expect(storage.getItem).toHaveBeenCalledTimes(1));
-    await tick();
+    rerender();
 
     act(() => {
       result.current[1]('changed state');
@@ -139,13 +131,5 @@ describe('Persistence atom', () => {
       '__RX_RECOIL_STATE:test',
       JSON.stringify({ version: 0, value: JSON.stringify('changed state') }),
     );
-
-    unmount();
-
-    await tick();
-    expect(stateContext.stateMap.get(persistedState.key)).toMatchInlineSnapshot(
-      `undefined`,
-    );
-    expect(stateContext.stateMap.size).toBe(0);
   });
 });

@@ -67,14 +67,14 @@ export function createAtom<Value, UpdateEvent = Value>(
 
   const onError = reportError(report);
 
-  const { useValue, subscription } = createUseValueHook(
-    atomDefinition.key,
+  const { useValue, useValueRaw, subscription } = createUseValueHook(
     value$,
     (e) => onError(e, `Exception in atom value stream`),
   );
 
   const atom: MutatableState<Value, UpdateEvent> = {
     useValue,
+    useValueRaw,
     dispatchUpdate,
     value$,
     key: atomDefinition.key,

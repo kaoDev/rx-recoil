@@ -5,8 +5,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { Observable } from 'rxjs';
-import { filter, take } from 'rxjs/operators';
 import { createAtom } from './atom';
 import { ErrorReporter } from './reportError';
 import { createSelector } from './selector';
@@ -14,7 +12,6 @@ import { createPublicStateWriteAccess } from './stateAccess';
 import {
   AtomDefinition,
   EMPTY_TYPE,
-  EMPTY_VALUE,
   InternalRegisteredState,
   InternalStateAccess,
   MutatableSelectorDefinition,
@@ -25,8 +22,8 @@ import {
   StateDefinition,
   StateKey,
   StateType,
-  UsageKey,
   SubscribableOrPromise,
+  UsageKey,
 } from './types';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
@@ -323,21 +320,6 @@ export function useAtom<Value, UpdateEvent>(
 
   const value = stateReference.state.useValue();
 
-  if (value === EMPTY_VALUE) {
-    if (!stateReference.suspensePromise) {
-      stateReference.suspensePromise = (stateReference.state
-        .value$ as Observable<Value | EMPTY_TYPE>)
-        .pipe(
-          filter((val): val is Value => val !== EMPTY_VALUE),
-          take(1),
-        )
-        .toPromise();
-    }
-    throw stateReference.suspensePromise;
-  }
-
-  stateReference.suspensePromise = undefined;
-
   return [
     value,
     (stateReference.state as MutatableState<Value, UpdateEvent>).dispatchUpdate,
@@ -359,11 +341,11 @@ export function useAtomRaw<Value, UpdateEvent>(
 export function useAtomRaw<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
 ) {
-  const { useValue, dispatchUpdate } = useAtomicState(
+  const { useValueRaw, dispatchUpdate } = useAtomicState(
     identifier as AtomDefinition<Value, UpdateEvent>,
   );
 
-  const value = useValue();
+  const value = useValueRaw();
 
   return [value, dispatchUpdate] as const;
 }

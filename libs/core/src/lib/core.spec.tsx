@@ -166,7 +166,7 @@ describe('rx-recoil core functionality', () => {
 
     const stateRootValue = createStateContextValue();
 
-    const { unmount, result } = renderHook(() => useAtom(testAtom), {
+    const { unmount, result, rerender } = renderHook(() => useAtom(testAtom), {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
@@ -175,6 +175,7 @@ describe('rx-recoil core functionality', () => {
     act(() => {
       result.current[1]('changed value');
     });
+    rerender();
     expect(result.current[0]).toBe('changed value');
     unmount();
     const { result: result2 } = renderHook(() => useAtom(testAtom), {
@@ -189,7 +190,7 @@ describe('rx-recoil core functionality', () => {
 
     const stateRootValue = createStateContextValue();
 
-    const { unmount, result } = renderHook(() => useAtom(testAtom), {
+    const { unmount, result, rerender } = renderHook(() => useAtom(testAtom), {
       wrapper: StateRoot,
       initialProps: { context: stateRootValue },
     });
@@ -198,6 +199,7 @@ describe('rx-recoil core functionality', () => {
     act(() => {
       result.current[1]('changed value');
     });
+    rerender();
     expect(result.current[0]).toBe('changed value');
     unmount();
     const { result: result2 } = renderHook(() => useAtom(testAtom), {

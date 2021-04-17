@@ -2,15 +2,10 @@ import {
   atom,
   EMPTY_TYPE,
   EMPTY_VALUE,
-  selector,
-  SelectorDefinition,
   useAtom,
-  useAtomRaw,
   useIsomorphicLayoutEffect,
 } from '@rx-recoil/core';
-import { useCallback } from 'react';
-import { BehaviorSubject, Observable, Subject } from 'rxjs';
-import { filter, mergeMap } from 'rxjs/operators';
+import { useCallback, useState } from 'react';
 
 interface ValidResult<Value> {
   value: Value;
@@ -23,12 +18,23 @@ interface ErrorResult {
   error: Error;
 }
 type QueryResult<Value> = ValidResult<Value> | ErrorResult;
-interface QueryState<Value> {
-  selector: SelectorDefinition<QueryResult<Value> | EMPTY_TYPE>;
-  update$: Subject<Promise<Value> | undefined>;
-  runningRequest?: Promise<Value>;
+
+interface Query<Value> {
   lastTimestamp: number;
+  refetch: () => Promise<Value | Error>;
+  listeners: Set<() => void>;
 }
+
+interface EmptyQueryState<Value> extends Query<Value> {
+  result: EMPTY_TYPE;
+  runningRequest: Promise<Value | Error>;
+}
+interface ResolvedQueryState<Value> extends Query<Value> {
+  result: QueryResult<Value>;
+  runningRequest?: Promise<Value | Error>;
+}
+
+type QueryState<Value> = EmptyQueryState<Value> | ResolvedQueryState<Value>;
 
 const queryRegistry = atom(() => new Map<string, QueryState<unknown>>());
 const prefetchRegistry = atom(
@@ -37,84 +43,135 @@ const prefetchRegistry = atom(
 
 const DEFAULT_CACHE_TIME = 60000;
 
-function createQuerySelector<Value>(
-  value$: Observable<QueryResult<Value>>,
-  key: string,
-  initialData?: Value,
-): SelectorDefinition<QueryResult<Value> | EMPTY_TYPE> {
-  const initialValue = initialData
-    ? { value: initialData, timestamp: 0 }
-    : undefined;
+function useForceUpdate(): () => void {
+  const [, dispatch] = useState<unknown>(Object.create(null));
 
-  return selector<QueryResult<Value>>(() => value$, {
-    volatile: true,
-    debugKey: key,
-    initialValue,
-  });
+  // Turn dispatch(required_parameter) into dispatch().
+  const memoizedDispatch = useCallback((): void => {
+    dispatch(Object.create(null));
+  }, [dispatch]);
+  return memoizedDispatch;
 }
+
+function notifyListeners(queryState: QueryState<unknown>) {
+  for (const listener of queryState.listeners) {
+    listener();
+  }
+}
+
+const connectPromiseToState = <Value>(
+  queryState: QueryState<Value>,
+  promise: Promise<Value>,
+  onChange?: (value: Value) => void,
+) => {
+  function cleanUp() {
+    queryState.lastTimestamp = Date.now();
+    queryState.runningRequest = undefined;
+  }
+
+  const runningPromise: Promise<Value | Error> = promise
+    .then((value) => {
+      if (runningPromise === queryState.runningRequest) {
+        cleanUp();
+        onChange?.(value);
+        queryState.result = { value, timestamp: Date.now() };
+        notifyListeners(queryState);
+      }
+
+      if (queryState.result === EMPTY_VALUE) {
+        return queryState.runningRequest;
+      }
+      if (queryState.runningRequest) {
+        return queryState.runningRequest;
+      }
+
+      return queryState.result.value!;
+    })
+    .catch((error: Error) => {
+      if (runningPromise === queryState.runningRequest) {
+        cleanUp();
+        queryState.result = { error, timestamp: Date.now() };
+        notifyListeners(queryState);
+      }
+      return error;
+    });
+
+  queryState.runningRequest = runningPromise;
+  queryState.lastTimestamp = Date.now();
+
+  return runningPromise;
+};
 
 function useQueryState<Value>(
   key: string,
   fetcher: (key: string) => Promise<Value>,
   ttl: number,
-  initialData?: Value,
+  initialData?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>,
+  onChange?: (value: Value) => void,
 ) {
-  const queries = useAtomRaw(queryRegistry)[0];
+  const forceRender = useForceUpdate();
+  const queries = useAtom(queryRegistry)[0];
   const [prefetchPromises] = useAtom(prefetchRegistry);
 
   let queryState = queries.get(key) as QueryState<Value> | undefined;
 
+  const fresh = queryState === undefined;
+
   if (!queryState) {
-    const update$ = new BehaviorSubject<Promise<Value> | undefined>(undefined);
-
-    const value$: Observable<QueryResult<Value>> = update$.pipe(
-      filter((promise): promise is Promise<Value> => promise !== undefined),
-      mergeMap((promise) => {
-        function cleanUp() {
-          queryState!.lastTimestamp = Date.now();
-          queryState!.runningRequest = undefined;
-        }
-
-        return promise
-          .then((value) => {
-            cleanUp();
-            return { value, timestamp: Date.now() };
-          })
-          .catch((error: Error) => {
-            cleanUp();
-            return { error, timestamp: Date.now() };
-          });
-      }),
-    );
-
-    const querySelector = createQuerySelector(value$, key, initialData);
-
-    queryState = { selector: querySelector, update$, lastTimestamp: 0 };
+    queryState = {
+      result: EMPTY_VALUE,
+      lastTimestamp: 0,
+      listeners: new Set(),
+    } as QueryState<Value>;
     queries.set(key, queryState as QueryState<unknown>);
 
-    const prefetched = prefetchPromises.get(key);
-    if (prefetched && Date.now() - prefetched.ts < ttl) {
-      queryState.runningRequest = prefetched.p as Promise<Value>;
-      queryState.lastTimestamp = prefetched.ts;
-      queryState!.update$.next(prefetched.p as Promise<Value>);
+    if (initialData && initialData !== EMPTY_VALUE) {
+      if (initialData instanceof Promise) {
+        connectPromiseToState(
+          queryState,
+          initialData.then((value) => {
+            if (value === EMPTY_VALUE) {
+              return fetcher(key);
+            }
+            return value;
+          }),
+          onChange,
+        );
+      }
+    } else {
+      const prefetched = prefetchPromises.get(key);
+      if (prefetched && Date.now() - prefetched.ts < ttl) {
+        connectPromiseToState(
+          queryState,
+          prefetched.p as Promise<Value>,
+          onChange,
+        );
+        queryState.lastTimestamp = prefetched.ts;
+      }
     }
+    queryState.refetch = () => {
+      if (queryState!.runningRequest) {
+        return queryState!.runningRequest;
+      }
+
+      return connectPromiseToState(queryState!, fetcher(key), onChange);
+    };
   }
 
-  const refetch = useCallback(() => {
-    if (queryState!.runningRequest) {
-      return queryState!.runningRequest;
-    }
-    const fetchPromise = fetcher(key);
-    queryState!.runningRequest = fetchPromise;
-    queryState!.update$.next(fetchPromise);
-    queryState!.lastTimestamp = Date.now();
+  useIsomorphicLayoutEffect(() => {
+    queryState?.listeners.add(forceRender);
 
-    return fetchPromise;
-  }, [queryState, fetcher, key]);
+    return () => {
+      queryState?.listeners.delete(forceRender);
+    };
+  }, [forceRender]);
+
+  if (fresh && !queryState.runningRequest) {
+    queryState.runningRequest = queryState.refetch();
+  }
 
   return {
     queryState,
-    refetch,
   };
 }
 
@@ -145,20 +202,28 @@ type QueryRawResult<Value> =
       data: Value;
       error: undefined;
       loading: false;
-      refetch: () => Promise<Value>;
+      refetch: () => Promise<Value | Error>;
     }
   | {
       data: undefined;
       error: Error;
       loading: false;
-      refetch: () => Promise<Value>;
+      refetch: () => Promise<Value | Error>;
     }
   | {
       data: undefined;
       error: undefined;
       loading: true;
-      refetch: () => Promise<Value>;
+      refetch: () => Promise<Value | Error>;
     };
+
+interface UseQueryProps<Value> {
+  initialData?: (
+    key: string,
+  ) => Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
+  ttl?: number;
+  onChange?: (value: Value) => void;
+}
 
 export function useQueryRaw<Value>(
   queryId: string | (() => string),
@@ -166,29 +231,38 @@ export function useQueryRaw<Value>(
   {
     initialData,
     ttl = DEFAULT_CACHE_TIME,
-  }: {
-    initialData?: Value;
-    ttl?: number;
-  } = {},
+    onChange,
+  }: UseQueryProps<Value> = {},
 ): QueryRawResult<Value> {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, refetch } = useQueryState(key, fetcher, ttl, initialData);
+  const { queryState } = useQueryState(
+    key,
+    fetcher,
+    ttl,
+    initialData?.(key),
+    onChange,
+  );
 
-  const [queryValue] = useAtomRaw(queryState.selector);
+  const queryValue = queryState.result;
 
   useIsomorphicLayoutEffect(() => {
-    startRequestIfNecessary(refetch, queryState, ttl);
-  }, [ttl, queryState, refetch]);
+    startRequestIfNecessary(queryState.refetch, queryState, ttl);
+  }, [ttl, queryState, queryState.refetch]);
 
   if (queryValue === EMPTY_VALUE) {
-    return { refetch, data: undefined, loading: true, error: undefined };
+    return {
+      refetch: queryState.refetch,
+      data: undefined,
+      loading: true,
+      error: undefined,
+    };
   }
 
   return {
     data: queryValue.value,
     error: queryValue.error,
     loading: false,
-    refetch,
+    refetch: queryState.refetch,
   } as QueryRawResult<Value>;
 }
 
@@ -198,36 +272,34 @@ export function useQuery<Value>(
   {
     initialData,
     ttl = DEFAULT_CACHE_TIME,
-  }: {
-    initialData?: Value;
-    ttl?: number;
-  } = {},
-): [value: Value, refetch: () => Promise<Value>] {
+    onChange,
+  }: UseQueryProps<Value> = {},
+): [value: Value, refetch: () => Promise<Value | Error>] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState, refetch } = useQueryState(key, fetcher, ttl, initialData);
-  startRequestIfNecessary(refetch, queryState, ttl);
+  const { queryState } = useQueryState(
+    key,
+    fetcher,
+    ttl,
+    initialData?.(key),
+    onChange,
+  );
+  startRequestIfNecessary(queryState.refetch, queryState, ttl);
+  const queryValue = queryState.result;
 
-  try {
-    const [queryValue] = useAtom(queryState.selector);
-
-    if (queryValue.error) {
-      throw queryValue.error;
-    }
-
-    return [queryValue.value, refetch];
-  } catch (promiseOrError) {
-    if (promiseOrError instanceof Promise) {
-      throw promiseOrError;
-    }
-    if (promiseOrError instanceof Error) {
-      throw promiseOrError;
-    }
-    throw new Error(promiseOrError);
+  if (queryValue === EMPTY_VALUE) {
+    throw queryState.runningRequest;
   }
+
+  if (queryValue.error) {
+    throw queryValue.error;
+  }
+
+  return [queryValue.value, queryState.refetch];
 }
 
 export function usePrefetchCallback(
   fetcher: (key: string) => Promise<unknown>,
+  { forceRevalidate = false }: { forceRevalidate?: boolean } = {},
 ) {
   const [prefetchPromises] = useAtom(prefetchRegistry);
   const [queries] = useAtom(queryRegistry);
@@ -239,10 +311,14 @@ export function usePrefetchCallback(
       const query = queries.get(key);
 
       if (query || (prefetched && Date.now() - prefetched.ts < ttl)) {
+        if (forceRevalidate) {
+          query?.refetch();
+        }
+
         return;
       }
       prefetchPromises.set(key, { p: fetcher(key), ts: Date.now() });
     },
-    [fetcher, prefetchPromises, queries],
+    [fetcher, forceRevalidate, prefetchPromises, queries],
   );
 }
