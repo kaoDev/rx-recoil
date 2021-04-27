@@ -25,4 +25,3 @@ export type {
   StateWriteAccess,
   StateReadAccess as SyncStateReadAccess,
 } from './lib/types';
-export { useIsomorphicLayoutEffect } from './lib/useIsomorphicLayoutEffect';

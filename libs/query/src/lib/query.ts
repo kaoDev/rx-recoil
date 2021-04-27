@@ -1,11 +1,5 @@
-import {
-  atom,
-  EMPTY_TYPE,
-  EMPTY_VALUE,
-  useAtom,
-  useIsomorphicLayoutEffect,
-} from '@rx-recoil/core';
-import { useCallback, useState } from 'react';
+import { atom, EMPTY_TYPE, EMPTY_VALUE, useAtom } from '@rx-recoil/core';
+import { useCallback, useState, useEffect } from 'react';
 
 interface ValidResult<Value> {
   value: Value;
@@ -158,7 +152,7 @@ function useQueryState<Value>(
     };
   }
 
-  useIsomorphicLayoutEffect(() => {
+  useEffect(() => {
     queryState?.listeners.add(forceRender);
 
     return () => {
@@ -203,18 +197,21 @@ type QueryRawResult<Value> =
       error: undefined;
       loading: false;
       refetch: () => Promise<Value | Error>;
+      refreshing: boolean;
     }
   | {
       data: undefined;
       error: Error;
       loading: false;
       refetch: () => Promise<Value | Error>;
+      refreshing: boolean;
     }
   | {
       data: undefined;
       error: undefined;
       loading: true;
       refetch: () => Promise<Value | Error>;
+      refreshing: boolean;
     };
 
 interface UseQueryProps<Value> {
@@ -245,9 +242,11 @@ export function useQueryRaw<Value>(
 
   const queryValue = queryState.result;
 
-  useIsomorphicLayoutEffect(() => {
+  useEffect(() => {
     startRequestIfNecessary(queryState.refetch, queryState, ttl);
   }, [ttl, queryState, queryState.refetch]);
+
+  const refreshing = queryState.runningRequest != null;
 
   if (queryValue === EMPTY_VALUE) {
     return {
@@ -255,6 +254,7 @@ export function useQueryRaw<Value>(
       data: undefined,
       loading: true,
       error: undefined,
+      refreshing,
     };
   }
 
@@ -263,6 +263,7 @@ export function useQueryRaw<Value>(
     error: queryValue.error,
     loading: false,
     refetch: queryState.refetch,
+    refreshing,
   } as QueryRawResult<Value>;
 }
 
@@ -274,7 +275,7 @@ export function useQuery<Value>(
     ttl = DEFAULT_CACHE_TIME,
     onChange,
   }: UseQueryProps<Value> = {},
-): [value: Value, refetch: () => Promise<Value | Error>] {
+): [value: Value, refetch: () => Promise<Value | Error>, refreshing: boolean] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
   const { queryState } = useQueryState(
     key,
@@ -294,7 +295,11 @@ export function useQuery<Value>(
     throw queryValue.error;
   }
 
-  return [queryValue.value, queryState.refetch];
+  return [
+    queryValue.value,
+    queryState.refetch,
+    queryState.runningRequest != null,
+  ];
 }
 
 export function usePrefetchCallback(

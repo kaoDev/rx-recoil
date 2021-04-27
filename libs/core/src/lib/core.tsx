@@ -4,6 +4,7 @@ import React, {
   useContext,
   useRef,
   useState,
+  useEffect,
 } from 'react';
 import { createAtom } from './atom';
 import { ErrorReporter } from './reportError';
@@ -25,7 +26,6 @@ import {
   SubscribableOrPromise,
   UsageKey,
 } from './types';
-import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 function cleanupUsage({
   rootState,
@@ -275,7 +275,7 @@ function useAtomicStateInternal<Value, UpdateEvent>(
 
   const registeredStateObject = stateReference.current;
 
-  useIsomorphicLayoutEffect(() => {
+  useEffect(() => {
     registerStateUsage(registeredStateObject, usageId.current);
     registered.current = true;
 
@@ -290,6 +290,7 @@ function useAtomicStateInternal<Value, UpdateEvent>(
   }, [
     getStateObject.stateMap,
     getStateObject.stateSleepCache,
+    registeredStateObject,
     registeredStateObject.state.key,
   ]);
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   asyncScheduler,
   BehaviorSubject,
@@ -7,7 +7,6 @@ import {
 } from 'rxjs';
 import { filter, observeOn, take } from 'rxjs/operators';
 import { EMPTY_TYPE, EMPTY_VALUE } from './types';
-import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -67,7 +66,7 @@ export function createUseValueHook<Value>(
     }
     initialValuePromise = null;
 
-    useIsomorphicLayoutEffect(() => {
+    useEffect(() => {
       listeners.add(forceUpdate);
       return () => {
         listeners.delete(forceUpdate);
@@ -80,7 +79,7 @@ export function createUseValueHook<Value>(
   function useValueRaw() {
     const forceUpdate = useForceUpdate();
 
-    useIsomorphicLayoutEffect(() => {
+    useEffect(() => {
       listeners.add(forceUpdate);
       return () => {
         listeners.delete(forceUpdate);
