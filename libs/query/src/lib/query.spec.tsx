@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect } from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react-hooks';
 import { createStateContextValue, StateRoot } from '@rx-recoil/core';
 import '@testing-library/jest-dom';
 import { usePrefetchCallback, useQuery, useQueryRaw } from './query';
@@ -252,6 +253,44 @@ describe('query', () => {
     expect(fetcher).toBeCalledTimes(1);
     expect(delayedElement).toBeInTheDocument();
   });
+
+  it('should provide access to changed data based on key', async () => {
+    const initialPromise = new Promise<number>((resolve) => {
+      resolve(1);
+    });
+    const initialPromise2 = new Promise<number>((resolve) => {
+      resolve(2);
+    });
+
+    const fetcher = jest.fn(async (key: string) => {
+      if (key === '1') {
+        return 1;
+      } else {
+        return 2;
+      }
+    });
+    const { rerender, result } = renderHook(
+      ({ key, initial }: { key: string; initial?: Promise<number> }) =>
+        useQuery(key, fetcher, { initialData: () => initial }),
+      {
+        initialProps: { key: '1', initial: initialPromise },
+        wrapper: StateRoot,
+      },
+    );
+
+    await act(async () => {
+      await tick();
+    });
+
+    expect(result.current[0]).toBe(1);
+
+    rerender({ key: '2', initial: initialPromise2 });
+
+    await act(async () => {
+      await tick();
+    });
+    expect(result.current[0]).toBe(2);
+  });
 });
 
 class ErrorBoundary extends React.Component<
@@ -278,4 +317,8 @@ class ErrorBoundary extends React.Component<
 
     return this.props.children;
   }
+}
+
+async function tick() {
+  await new Promise((r) => setTimeout(r));
 }

@@ -15,7 +15,7 @@ type QueryResult<Value> = ValidResult<Value> | ErrorResult;
 
 interface Query<Value> {
   lastTimestamp: number;
-  refetch: () => Promise<Value | Error>;
+  refetch: () => Promise<Value>;
   listeners: Set<() => void>;
 }
 
@@ -65,28 +65,17 @@ const connectPromiseToState = <Value>(
 
   const runningPromise: Promise<Value | Error> = promise
     .then((value) => {
-      if (runningPromise === queryState.runningRequest) {
-        cleanUp();
-        onChange?.(value);
-        queryState.result = { value, timestamp: Date.now() };
-        notifyListeners(queryState);
-      }
+      cleanUp();
+      onChange?.(value);
+      queryState.result = { value, timestamp: Date.now() };
+      notifyListeners(queryState);
 
-      if (queryState.result === EMPTY_VALUE) {
-        return queryState.runningRequest;
-      }
-      if (queryState.runningRequest) {
-        return queryState.runningRequest;
-      }
-
-      return queryState.result.value!;
+      return value;
     })
     .catch((error: Error) => {
-      if (runningPromise === queryState.runningRequest) {
-        cleanUp();
-        queryState.result = { error, timestamp: Date.now() };
-        notifyListeners(queryState);
-      }
+      cleanUp();
+      queryState.result = { error, timestamp: Date.now() };
+      notifyListeners(queryState);
       return error;
     });
 
@@ -112,11 +101,19 @@ function useQueryState<Value>(
   const fresh = queryState === undefined;
 
   if (!queryState) {
-    queryState = {
+    const newQueryState: QueryState<Value> = {
       result: EMPTY_VALUE,
       lastTimestamp: 0,
       listeners: new Set(),
+      refetch: () => {
+        if (newQueryState.runningRequest) {
+          return newQueryState.runningRequest;
+        }
+
+        return connectPromiseToState(newQueryState, fetcher(key), onChange);
+      },
     } as QueryState<Value>;
+    queryState = newQueryState;
     queries.set(key, queryState as QueryState<unknown>);
 
     if (initialData && initialData !== EMPTY_VALUE) {
@@ -141,15 +138,10 @@ function useQueryState<Value>(
           onChange,
         );
         queryState.lastTimestamp = prefetched.ts;
+      } else {
+        newQueryState.refetch();
       }
     }
-    queryState.refetch = () => {
-      if (queryState!.runningRequest) {
-        return queryState!.runningRequest;
-      }
-
-      return connectPromiseToState(queryState!, fetcher(key), onChange);
-    };
   }
 
   useEffect(() => {
@@ -158,7 +150,7 @@ function useQueryState<Value>(
     return () => {
       queryState?.listeners.delete(forceRender);
     };
-  }, [forceRender]);
+  }, [forceRender, queryState?.listeners]);
 
   if (fresh && !queryState.runningRequest) {
     queryState.runningRequest = queryState.refetch();
@@ -302,27 +294,36 @@ export function useQuery<Value>(
   ];
 }
 
-export function usePrefetchCallback(
-  fetcher: (key: string) => Promise<unknown>,
+export function usePrefetchCallback<Value = unknown>(
+  fetcher: (key: string) => Promise<Value>,
   { forceRevalidate = false }: { forceRevalidate?: boolean } = {},
 ) {
   const [prefetchPromises] = useAtom(prefetchRegistry);
   const [queries] = useAtom(queryRegistry);
 
   return useCallback(
-    (queryId: string | (() => string), ttl = DEFAULT_CACHE_TIME) => {
+    async (
+      queryId: string | (() => string),
+      ttl = DEFAULT_CACHE_TIME,
+    ): Promise<Value | Error> => {
       const key = typeof queryId !== 'string' ? queryId() : queryId;
       const prefetched = prefetchPromises.get(key);
-      const query = queries.get(key);
+      const query = queries.get(key) as QueryState<Value> | undefined;
 
-      if (query || (prefetched && Date.now() - prefetched.ts < ttl)) {
-        if (forceRevalidate) {
-          query?.refetch();
+      if (query) {
+        if (forceRevalidate || query.result === EMPTY_VALUE) {
+          return query.runningRequest ?? query.refetch();
+        } else {
+          return query.result.error ?? (query.result.value as Value);
         }
-
-        return;
       }
-      prefetchPromises.set(key, { p: fetcher(key), ts: Date.now() });
+
+      if (prefetched && Date.now() - prefetched.ts < ttl) {
+        return prefetched.p as Promise<Value>;
+      }
+      const p = fetcher(key);
+      prefetchPromises.set(key, { p, ts: Date.now() });
+      return p;
     },
     [fetcher, forceRevalidate, prefetchPromises, queries],
   );
