@@ -1,6 +1,6 @@
-import type { BehaviorSubject, Observable, Subscribable } from 'rxjs';
+import type { BehaviorSubject, Observable } from 'rxjs';
 
-export type SubscribableOrPromise<T> = Subscribable<T> | PromiseLike<T>;
+export type SubscribableOrPromise<T> = Observable<T> | PromiseLike<T>;
 
 export const EMPTY_VALUE = Symbol('EMPTY_VALUE');
 export type EMPTY_TYPE = typeof EMPTY_VALUE;

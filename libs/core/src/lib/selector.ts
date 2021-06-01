@@ -1,6 +1,6 @@
 import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs';
 import { map, mergeMap } from 'rxjs/operators';
-import { createUseValueHook, isPromise, isSubscribable } from './helpers';
+import { createUseValueHook, isPromise, isObservable } from './helpers';
 import { ErrorReporter, reportError } from './reportError';
 import {
   createPublicStateReadAccess,
@@ -130,7 +130,7 @@ export function createSelector<Value, Update>(
 
   const value$ = new BehaviorSubject(
     initialValueFromSleep ??
-      (isPromise(initialValue) || isSubscribable(initialValue)
+      (isPromise(initialValue) || isObservable(initialValue)
         ? fallback
         : initialValue),
   );
@@ -138,20 +138,20 @@ export function createSelector<Value, Update>(
 
   let initialValueSubscription: undefined | Unsubscribable;
 
-  if (isPromise(initialValue) || isSubscribable(initialValue)) {
-    initialValueSubscription = (isSubscribable(initialValue)
+  if (isPromise(initialValue) || isObservable(initialValue)) {
+    initialValueSubscription = (isObservable(initialValue)
       ? initialValue
       : from(initialValue)
-    ).subscribe(
-      (nextValue: Value) => {
+    ).subscribe({
+      next: (nextValue: Value) => {
         value$.next(nextValue);
       },
-      (error) =>
+      error: (error) =>
         reportError(report)(
           error,
           `Exception reading intial value for selector`,
         ),
-    );
+    });
   }
 
   const subscription =
@@ -164,7 +164,7 @@ export function createSelector<Value, Update>(
       .pipe(
         map(() => selectorDefinition.read(publicStateAccess)),
         mergeMap((value) => {
-          if (isSubscribable(value)) {
+          if (isObservable(value)) {
             return value;
           }
           if (isPromise(value)) {

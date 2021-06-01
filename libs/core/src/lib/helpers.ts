@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BehaviorSubject, Observable, Subscribable } from 'rxjs';
+import {
+  BehaviorSubject,
+  Observable,
+  isObservable as isObservableBase,
+} from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { EMPTY_TYPE, EMPTY_VALUE } from './types';
 
@@ -11,8 +15,8 @@ export function isPromise(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-export function isSubscribable<T>(value: unknown): value is Subscribable<T> {
-  return !!value && typeof (value as any).subscribe === 'function';
+export function isObservable<T>(value: unknown): value is Observable<T> {
+  return isObservableBase(value);
 }
 
 function useForceUpdate(): () => void {
