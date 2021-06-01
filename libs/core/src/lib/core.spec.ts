@@ -209,6 +209,20 @@ describe('rx-recoil core functionality', () => {
     expect(result2.current[0]).toBe('test');
   });
 
+  it('should change a state synchronously', async () => {
+    const testAtom = atom('test', { volatile: true });
+
+    const { result } = renderHook(() => useAtom(testAtom), {
+      wrapper: StateRoot,
+    });
+
+    expect(result.current[0]).toBe('test');
+    act(() => {
+      result.current[1]('changed value');
+    });
+    expect(result.current[0]).toBe('changed value');
+  });
+
   it('should run the mounting callback for atoms if available', async () => {
     const testAtom = atom('test');
     testAtom.onMount = jest.fn();

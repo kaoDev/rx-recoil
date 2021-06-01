@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  asyncScheduler,
-  BehaviorSubject,
-  Observable,
-  Subscribable,
-} from 'rxjs';
-import { filter, observeOn, take } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subscribable } from 'rxjs';
+import { filter, take } from 'rxjs/operators';
 import { EMPTY_TYPE, EMPTY_VALUE } from './types';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
@@ -49,7 +44,7 @@ export function createUseValueHook<Value>(
     return initialValuePromise;
   }
 
-  const subscription = value$.pipe(observeOn(asyncScheduler)).subscribe(
+  const subscription = value$.subscribe(
     () => {
       for (const listener of listeners) {
         listener();
