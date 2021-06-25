@@ -67,7 +67,7 @@ export function createAtom<Value, UpdateEvent = Value>(
 
   const onError = reportError(report);
 
-  const { useValue, useValueRaw, subscription } = createUseValueHook(
+  const { useValue, useValueRaw, unsubscribe } = createUseValueHook(
     value$,
     (e) => onError(e, `Exception in atom value stream`),
   );
@@ -85,6 +85,6 @@ export function createAtom<Value, UpdateEvent = Value>(
   return {
     state: atom,
     refs: new Set(),
-    onUnmount: () => subscription.unsubscribe(),
+    onUnmount: () => unsubscribe(),
   };
 }

@@ -299,27 +299,31 @@ function useAtomicStateInternal<Value, UpdateEvent>(
 
 export function useAtom<Value>(
   identifier: SelectorDefinition<Value>,
+  options?: { sync?: boolean },
 ): [value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>, _: never];
 export function useAtom<Value, UpdateEvent>(
   identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+  options?: { sync?: boolean },
 ): [
   value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>,
   dispatchUpdate: (value: UpdateEvent) => void,
 ];
 export function useAtom<Value, UpdateEvent>(
   identifier: AtomDefinition<Value, UpdateEvent>,
+  options?: { sync?: boolean },
 ): [
   value: Exclude<Value, EMPTY_TYPE>,
   dispatchUpdate: (value: UpdateEvent) => void,
 ];
 export function useAtom<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
+  { sync }: { sync?: boolean } = {},
 ) {
   const stateReference = useAtomicStateInternal(
     identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>,
   );
 
-  const value = stateReference.state.useValue();
+  const value = stateReference.state.useValue(sync);
 
   return [
     value,
@@ -329,24 +333,28 @@ export function useAtom<Value, UpdateEvent>(
 
 export function useAtomRaw<Value>(
   identifier: SelectorDefinition<Value>,
+  options?: { sync?: boolean },
 ): [value: UnpackedAsyncValue<Value>, _: never];
 export function useAtomRaw<Value, UpdateEvent>(
   identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
+  options?: { sync?: boolean },
 ): [
   value: UnpackedAsyncValue<Value>,
   dispatchUpdate: (value: UpdateEvent) => void,
 ];
 export function useAtomRaw<Value, UpdateEvent>(
   identifier: AtomDefinition<Value, UpdateEvent>,
+  options?: { sync?: boolean },
 ): [value: Value, dispatchUpdate: (value: UpdateEvent) => void];
 export function useAtomRaw<Value, UpdateEvent>(
   identifier: StateDefinition<Value, UpdateEvent>,
+  { sync }: { sync?: boolean } = {},
 ) {
   const { useValueRaw, dispatchUpdate } = useAtomicState(
     identifier as AtomDefinition<Value, UpdateEvent>,
   );
 
-  const value = useValueRaw();
+  const value = useValueRaw(sync);
 
   return [value, dispatchUpdate] as const;
 }

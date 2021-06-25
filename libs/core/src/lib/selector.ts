@@ -139,9 +139,8 @@ export function createSelector<Value, Update>(
   let initialValueSubscription: undefined | Unsubscribable;
 
   if (isPromise(initialValue) || isObservable(initialValue)) {
-    initialValueSubscription = (isObservable(initialValue)
-      ? initialValue
-      : from(initialValue)
+    initialValueSubscription = (
+      isObservable(initialValue) ? initialValue : from(initialValue)
     ).subscribe({
       next: (nextValue: Value) => {
         value$.next(nextValue);
@@ -184,14 +183,14 @@ export function createSelector<Value, Update>(
   const {
     useValue,
     useValueRaw,
-    subscription: valueHookSubscription,
+    unsubscribe: unsubscribeValueHook,
   } = createUseValueHook(value$, (e) =>
     onError(e, `Exception in selector value stream`),
   );
 
   function onUnmount() {
     subscription.unsubscribe();
-    valueHookSubscription.unsubscribe();
+    unsubscribeValueHook();
     initialValueSubscription?.unsubscribe();
   }
 

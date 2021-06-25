@@ -1,9 +1,9 @@
 {
   "name": "@rx-recoil/query",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "sideEffects": false,
   "peerDependencies": {
-    "rxjs": ">=6",
+    "rxjs": ">=7",
     "@rx-recoil/core": "*"
   },
   "license": "MIT",

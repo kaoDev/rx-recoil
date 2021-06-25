@@ -1,10 +1,10 @@
 {
   "name": "@rx-recoil/persistence",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "sideEffects": false,
   "license": "MIT",
   "peerDependencies": {
-    "rxjs": ">=6",
+    "rxjs": ">=7",
     "@rx-recoil/core": "*"
   },
   "author": {

@@ -3,8 +3,10 @@ import {
   BehaviorSubject,
   Observable,
   isObservable as isObservableBase,
+  firstValueFrom,
+  asyncScheduler,
 } from 'rxjs';
-import { filter, take } from 'rxjs/operators';
+import { filter, observeOn, take } from 'rxjs/operators';
 import { EMPTY_TYPE, EMPTY_VALUE } from './types';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
@@ -34,30 +36,46 @@ export function createUseValueHook<Value>(
   onError: (error: Error) => void,
 ) {
   const listeners = new Set<() => void>();
+  const asyncListeners = new Set<() => void>();
 
   let initialValuePromise: Promise<unknown> | null = null;
   function getInitialValuePromise() {
     if (!initialValuePromise) {
-      initialValuePromise = (value$ as Observable<unknown>)
-        .pipe(
+      initialValuePromise = firstValueFrom(
+        (value$ as Observable<unknown>).pipe(
           filter((v) => v !== EMPTY_VALUE),
           take(1),
-        )
-        .toPromise();
+        ),
+      );
     }
+
     return initialValuePromise;
   }
 
-  const subscription = value$.subscribe(
-    () => {
+  const asyncStream = value$.pipe(observeOn(asyncScheduler));
+  const subscription = value$.subscribe({
+    error: (error) => onError(error),
+    next: () => {
       for (const listener of listeners) {
         listener();
       }
     },
-    (error) => onError(error),
-  );
+  });
+  const asyncSubscription = asyncStream.subscribe({
+    error: (error) => onError(error),
+    next: () => {
+      for (const listener of asyncListeners) {
+        listener();
+      }
+    },
+  });
 
-  function useValue(): Exclude<Value, EMPTY_TYPE> {
+  function unsubscribe() {
+    subscription.unsubscribe();
+    asyncSubscription.unsubscribe();
+  }
+
+  function useValue(synchronous = false): Exclude<Value, EMPTY_TYPE> {
     const forceUpdate = useForceUpdate();
 
     if ((value$.value as any) === EMPTY_VALUE) {
@@ -66,27 +84,41 @@ export function createUseValueHook<Value>(
     initialValuePromise = null;
 
     useEffect(() => {
-      listeners.add(forceUpdate);
-      return () => {
-        listeners.delete(forceUpdate);
-      };
-    }, [forceUpdate]);
+      if (synchronous) {
+        listeners.add(forceUpdate);
+        return () => {
+          listeners.delete(forceUpdate);
+        };
+      } else {
+        asyncListeners.add(forceUpdate);
+        return () => {
+          asyncListeners.delete(forceUpdate);
+        };
+      }
+    }, [forceUpdate, synchronous]);
 
     return value$.value as Exclude<Value, EMPTY_TYPE>;
   }
 
-  function useValueRaw() {
+  function useValueRaw(synchronous = false) {
     const forceUpdate = useForceUpdate();
 
     useEffect(() => {
-      listeners.add(forceUpdate);
-      return () => {
-        listeners.delete(forceUpdate);
-      };
-    }, [forceUpdate]);
+      if (synchronous) {
+        listeners.add(forceUpdate);
+        return () => {
+          listeners.delete(forceUpdate);
+        };
+      } else {
+        asyncListeners.add(forceUpdate);
+        return () => {
+          asyncListeners.delete(forceUpdate);
+        };
+      }
+    }, [forceUpdate, synchronous]);
 
     return value$.value;
   }
 
-  return { useValue, useValueRaw, subscription };
+  return { useValue, useValueRaw, unsubscribe };
 }

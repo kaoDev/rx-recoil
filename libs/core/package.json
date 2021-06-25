@@ -1,11 +1,11 @@
 {
   "name": "@rx-recoil/core",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "sideEffects": false,
   "license": "MIT",
   "peerDependencies": {
     "react": ">=16.8.0",
-    "rxjs": ">=6"
+    "rxjs": ">=7"
   },
   "author": {
     "name": "Kalle Ott",

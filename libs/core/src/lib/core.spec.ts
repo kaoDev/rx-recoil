@@ -212,7 +212,7 @@ describe('rx-recoil core functionality', () => {
   it('should change a state synchronously', async () => {
     const testAtom = atom('test', { volatile: true });
 
-    const { result } = renderHook(() => useAtom(testAtom), {
+    const { result } = renderHook(() => useAtom(testAtom, { sync: true }), {
       wrapper: StateRoot,
     });
 
