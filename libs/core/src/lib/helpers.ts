@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  BehaviorSubject,
-  Observable,
-  isObservable as isObservableBase,
-  firstValueFrom,
   asyncScheduler,
+  BehaviorSubject,
+  firstValueFrom,
+  isObservable as isObservableBase,
+  Observable,
 } from 'rxjs';
-import { filter, observeOn, take } from 'rxjs/operators';
+import { filter, observeOn } from 'rxjs/operators';
 import { EMPTY_TYPE, EMPTY_VALUE } from './types';
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
@@ -21,14 +21,27 @@ export function isObservable<T>(value: unknown): value is Observable<T> {
   return isObservableBase(value);
 }
 
-function useForceUpdate(): () => void {
-  const [, dispatch] = useState<unknown>(Object.create(null));
+export function useObservable<T>(
+  value$: Observable<T>,
+  initialValue: T,
+  synchronous = false,
+) {
+  const [state, setState] = useState(initialValue);
 
-  // Turn dispatch(required_parameter) into dispatch().
-  const memoizedDispatch = useCallback((): void => {
-    dispatch(Object.create(null));
-  }, [dispatch]);
-  return memoizedDispatch;
+  useEffect(() => {
+    const subscription = (synchronous
+      ? value$
+      : value$.pipe(observeOn(asyncScheduler))
+    ).subscribe((next) => {
+      setState(next);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [value$, synchronous]);
+
+  return state;
 }
 
 export function createUseValueHook<Value>(
@@ -42,10 +55,7 @@ export function createUseValueHook<Value>(
   function getInitialValuePromise() {
     if (!initialValuePromise) {
       initialValuePromise = firstValueFrom(
-        (value$ as Observable<unknown>).pipe(
-          filter((v) => v !== EMPTY_VALUE),
-          take(1),
-        ),
+        (value$ as Observable<unknown>).pipe(filter((v) => v !== EMPTY_VALUE)),
       );
     }
 
@@ -76,48 +86,20 @@ export function createUseValueHook<Value>(
   }
 
   function useValue(synchronous = false): Exclude<Value, EMPTY_TYPE> {
-    const forceUpdate = useForceUpdate();
+    const currentValue = useObservable(value$, value$.value, synchronous);
 
-    if ((value$.value as any) === EMPTY_VALUE) {
+    if ((currentValue as any) === EMPTY_VALUE) {
       throw getInitialValuePromise();
     }
     initialValuePromise = null;
 
-    useEffect(() => {
-      if (synchronous) {
-        listeners.add(forceUpdate);
-        return () => {
-          listeners.delete(forceUpdate);
-        };
-      } else {
-        asyncListeners.add(forceUpdate);
-        return () => {
-          asyncListeners.delete(forceUpdate);
-        };
-      }
-    }, [forceUpdate, synchronous]);
-
-    return value$.value as Exclude<Value, EMPTY_TYPE>;
+    return currentValue as Exclude<Value, EMPTY_TYPE>;
   }
 
   function useValueRaw(synchronous = false) {
-    const forceUpdate = useForceUpdate();
+    const currentValue = useObservable(value$, value$.value, synchronous);
 
-    useEffect(() => {
-      if (synchronous) {
-        listeners.add(forceUpdate);
-        return () => {
-          listeners.delete(forceUpdate);
-        };
-      } else {
-        asyncListeners.add(forceUpdate);
-        return () => {
-          asyncListeners.delete(forceUpdate);
-        };
-      }
-    }, [forceUpdate, synchronous]);
-
-    return value$.value;
+    return currentValue;
   }
 
   return { useValue, useValueRaw, unsubscribe };

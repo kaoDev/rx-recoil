@@ -37,9 +37,12 @@ describe('rx-recoil atom functionality', () => {
       debugKey: 'testAtom',
     });
 
-    const { result, rerender } = renderHook(() => useAtom(testAtom), {
-      wrapper: StateRoot,
-    });
+    const { result, rerender } = renderHook(
+      () => useAtom(testAtom, { sync: true }),
+      {
+        wrapper: StateRoot,
+      },
+    );
 
     act(() => {
       result.current[1]('updated value');

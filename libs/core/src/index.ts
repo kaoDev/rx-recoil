@@ -25,3 +25,4 @@ export type {
   StateWriteAccess,
   StateReadAccess as SyncStateReadAccess,
 } from './lib/types';
+export { useObservable } from './lib/helpers';

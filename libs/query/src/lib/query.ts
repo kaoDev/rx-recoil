@@ -1,5 +1,12 @@
-import { atom, EMPTY_TYPE, EMPTY_VALUE, useAtom } from '@rx-recoil/core';
-import { useCallback, useState, useEffect } from 'react';
+import {
+  atom,
+  EMPTY_TYPE,
+  EMPTY_VALUE,
+  useAtom,
+  useObservable,
+} from '@rx-recoil/core';
+import { useCallback, useEffect } from 'react';
+import { Subject } from 'rxjs';
 
 interface ValidResult<Value> {
   value: Value;
@@ -16,7 +23,7 @@ type QueryResult<Value> = ValidResult<Value> | ErrorResult;
 interface Query<Value> {
   lastTimestamp: number;
   refetch: () => Promise<Value>;
-  listeners: Set<() => void>;
+  value$: Subject<QueryResult<Value>>;
 }
 
 interface EmptyQueryState<Value> extends Query<Value> {
@@ -37,26 +44,9 @@ const prefetchRegistry = atom(
 
 const DEFAULT_CACHE_TIME = 60000;
 
-function useForceUpdate(): () => void {
-  const [, dispatch] = useState<unknown>(Object.create(null));
-
-  // Turn dispatch(required_parameter) into dispatch().
-  const memoizedDispatch = useCallback((): void => {
-    dispatch(Object.create(null));
-  }, [dispatch]);
-  return memoizedDispatch;
-}
-
-function notifyListeners(queryState: QueryState<unknown>) {
-  for (const listener of queryState.listeners) {
-    listener();
-  }
-}
-
 const connectPromiseToState = <Value>(
   queryState: QueryState<Value>,
   promise: Promise<Value>,
-  onChange?: (value: Value) => void,
 ) => {
   function cleanUp() {
     queryState.lastTimestamp = Date.now();
@@ -66,16 +56,18 @@ const connectPromiseToState = <Value>(
   const runningPromise: Promise<Value | Error> = promise
     .then((value) => {
       cleanUp();
-      onChange?.(value);
+
       queryState.result = { value, timestamp: Date.now() };
-      notifyListeners(queryState);
+      queryState.value$.next(queryState.result);
 
       return value;
     })
     .catch((error: Error) => {
       cleanUp();
+
       queryState.result = { error, timestamp: Date.now() };
-      notifyListeners(queryState);
+      queryState.value$.next(queryState.result);
+
       return error;
     });
 
@@ -90,9 +82,10 @@ function useQueryState<Value>(
   fetcher: (key: string) => Promise<Value>,
   ttl: number,
   initialData?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>,
-  onChange?: (value: Value) => void,
-) {
-  const forceRender = useForceUpdate();
+): {
+  queryState: QueryState<Value>;
+  queryValue: EMPTY_TYPE | QueryResult<Value>;
+} {
   const queries = useAtom(queryRegistry)[0];
   const [prefetchPromises] = useAtom(prefetchRegistry);
 
@@ -104,13 +97,13 @@ function useQueryState<Value>(
     const newQueryState: QueryState<Value> = {
       result: EMPTY_VALUE,
       lastTimestamp: 0,
-      listeners: new Set(),
+      value$: new Subject(),
       refetch: () => {
         if (newQueryState.runningRequest) {
           return newQueryState.runningRequest;
         }
 
-        return connectPromiseToState(newQueryState, fetcher(key), onChange);
+        return connectPromiseToState(newQueryState, fetcher(key));
       },
     } as QueryState<Value>;
     queryState = newQueryState;
@@ -126,17 +119,12 @@ function useQueryState<Value>(
             }
             return value;
           }),
-          onChange,
         );
       }
     } else {
       const prefetched = prefetchPromises.get(key);
       if (prefetched && Date.now() - prefetched.ts < ttl) {
-        connectPromiseToState(
-          queryState,
-          prefetched.p as Promise<Value>,
-          onChange,
-        );
+        connectPromiseToState(queryState, prefetched.p as Promise<Value>);
         queryState.lastTimestamp = prefetched.ts;
       } else {
         newQueryState.refetch();
@@ -144,13 +132,10 @@ function useQueryState<Value>(
     }
   }
 
-  useEffect(() => {
-    queryState?.listeners.add(forceRender);
-
-    return () => {
-      queryState?.listeners.delete(forceRender);
-    };
-  }, [forceRender, queryState?.listeners]);
+  const queryValue = useObservable<EMPTY_TYPE | QueryResult<Value>>(
+    queryState.value$,
+    queryState.result,
+  );
 
   if (fresh && !queryState.runningRequest) {
     queryState.runningRequest = queryState.refetch();
@@ -158,6 +143,7 @@ function useQueryState<Value>(
 
   return {
     queryState,
+    queryValue,
   };
 }
 
@@ -211,26 +197,15 @@ interface UseQueryProps<Value> {
     key: string,
   ) => Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
   ttl?: number;
-  onChange?: (value: Value) => void;
 }
 
 export function useQueryRaw<Value>(
   queryId: string | (() => string),
   fetcher: (key: string) => Promise<Value>,
-  {
-    initialData,
-    ttl = DEFAULT_CACHE_TIME,
-    onChange,
-  }: UseQueryProps<Value> = {},
+  { initialData, ttl = DEFAULT_CACHE_TIME }: UseQueryProps<Value> = {},
 ): QueryRawResult<Value> {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState } = useQueryState(
-    key,
-    fetcher,
-    ttl,
-    initialData?.(key),
-    onChange,
-  );
+  const { queryState } = useQueryState(key, fetcher, ttl, initialData?.(key));
 
   const queryValue = queryState.result;
 
@@ -262,22 +237,16 @@ export function useQueryRaw<Value>(
 export function useQuery<Value>(
   queryId: string | (() => string),
   fetcher: (key: string) => Promise<Value>,
-  {
-    initialData,
-    ttl = DEFAULT_CACHE_TIME,
-    onChange,
-  }: UseQueryProps<Value> = {},
+  { initialData, ttl = DEFAULT_CACHE_TIME }: UseQueryProps<Value> = {},
 ): [value: Value, refetch: () => Promise<Value | Error>, refreshing: boolean] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
-  const { queryState } = useQueryState(
+  const { queryState, queryValue } = useQueryState(
     key,
     fetcher,
     ttl,
     initialData?.(key),
-    onChange,
   );
   startRequestIfNecessary(queryState.refetch, queryState, ttl);
-  const queryValue = queryState.result;
 
   if (queryValue === EMPTY_VALUE) {
     throw queryState.runningRequest;
