@@ -3,7 +3,12 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react-hooks';
 import { createStateContextValue, StateRoot } from '@rx-recoil/core';
 import '@testing-library/jest-dom';
-import { usePrefetchCallback, useQuery, useQueryRaw } from './query';
+import {
+  useMutableQuery,
+  usePrefetchCallback,
+  useQuery,
+  useQueryRaw,
+} from './query';
 import { act } from 'react-dom/test-utils';
 
 describe('query', () => {
@@ -290,6 +295,85 @@ describe('query', () => {
       await tick();
     });
     expect(result.current[0]).toBe(2);
+  });
+
+  it('should provide access a mutate funciton to change the query data', async () => {
+    const initialPromise = new Promise<number>((resolve) => {
+      resolve(1);
+    });
+
+    const fetcher = jest.fn(async (key: string) => {
+      if (key === '1') {
+        return 1;
+      } else {
+        return 2;
+      }
+    });
+    const mutator = jest.fn(async (payload: number) => {
+      await tick();
+      return payload;
+    });
+    const { result } = renderHook(
+      ({ key, initial }: { key: string; initial?: Promise<number> }) =>
+        useMutableQuery(key, fetcher, mutator, { initialData: () => initial }),
+      {
+        initialProps: { key: '1', initial: initialPromise },
+        wrapper: StateRoot,
+      },
+    );
+
+    await act(async () => {
+      await tick();
+    });
+
+    expect(result.current[0]).toBe(1);
+
+    await act(async () => {
+      const mutate = result.current[3];
+      await mutate({ payload: 5, optimisticUpdate: 4 });
+    });
+    expect(result.current[0]).toBe(4);
+
+    await act(async () => {
+      await tick();
+    });
+    expect(result.current[0]).toBe(5);
+  });
+
+  it('should reset query data', async () => {
+    const initialPromise = new Promise<number>((resolve) => {
+      resolve(1);
+    });
+
+    const fetcher = jest.fn(async (key: string) => {
+      if (key === '1') {
+        return 1;
+      } else {
+        return 2;
+      }
+    });
+    const { result, rerender } = renderHook(
+      ({ key, initial }: { key: string; initial?: Promise<number> }) =>
+        useQuery(key, fetcher, { initialData: () => initial }),
+      {
+        initialProps: { key: '1', initial: initialPromise },
+        wrapper: StateRoot,
+      },
+    );
+
+    await act(async () => {
+      await tick();
+    });
+
+    expect(result.current[0]).toBe(1);
+
+    await act(async () => {
+      const reset = result.current[3];
+      reset();
+      await tick();
+    });
+    rerender();
+    expect(result.current).toBe(undefined);
   });
 });
 

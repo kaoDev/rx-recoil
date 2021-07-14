@@ -23,7 +23,8 @@ type QueryResult<Value> = ValidResult<Value> | ErrorResult;
 interface Query<Value> {
   lastTimestamp: number;
   refetch: () => Promise<Value>;
-  value$: Subject<QueryResult<Value>>;
+  reset: () => void;
+  value$: Subject<QueryResult<Value> | EMPTY_TYPE>;
 }
 
 interface EmptyQueryState<Value> extends Query<Value> {
@@ -46,27 +47,29 @@ const DEFAULT_CACHE_TIME = 60000;
 
 const connectPromiseToState = <Value>(
   queryState: QueryState<Value>,
-  promise: Promise<Value>,
+  requestPromise: Promise<Value>,
 ) => {
   function cleanUp() {
     queryState.lastTimestamp = Date.now();
     queryState.runningRequest = undefined;
   }
 
-  const runningPromise: Promise<Value | Error> = promise
+  const runningPromise: Promise<Value | Error> = requestPromise
     .then((value) => {
-      cleanUp();
-
-      queryState.result = { value, timestamp: Date.now() };
-      queryState.value$.next(queryState.result);
+      if (queryState.runningRequest === runningPromise) {
+        cleanUp();
+        queryState.result = { value, timestamp: Date.now() };
+        queryState.value$.next(queryState.result);
+      }
 
       return value;
     })
     .catch((error: Error) => {
-      cleanUp();
-
-      queryState.result = { error, timestamp: Date.now() };
-      queryState.value$.next(queryState.result);
+      if (queryState.runningRequest === runningPromise) {
+        cleanUp();
+        queryState.result = { error, timestamp: Date.now() };
+        queryState.value$.next(queryState.result);
+      }
 
       return error;
     });
@@ -104,6 +107,12 @@ function useQueryState<Value>(
         }
 
         return connectPromiseToState(newQueryState, fetcher(key));
+      },
+      reset: () => {
+        newQueryState.runningRequest = undefined;
+        newQueryState.lastTimestamp = 0;
+        newQueryState.result = EMPTY_VALUE;
+        newQueryState.value$.next(EMPTY_VALUE);
       },
     } as QueryState<Value>;
     queryState = newQueryState;
@@ -175,6 +184,7 @@ type QueryRawResult<Value> =
       error: undefined;
       loading: false;
       refetch: () => Promise<Value | Error>;
+      reset: () => void;
       refreshing: boolean;
     }
   | {
@@ -182,6 +192,7 @@ type QueryRawResult<Value> =
       error: Error;
       loading: false;
       refetch: () => Promise<Value | Error>;
+      reset: () => void;
       refreshing: boolean;
     }
   | {
@@ -189,6 +200,7 @@ type QueryRawResult<Value> =
       error: undefined;
       loading: true;
       refetch: () => Promise<Value | Error>;
+      reset: () => void;
       refreshing: boolean;
     };
 
@@ -214,10 +226,12 @@ export function useQueryRaw<Value>(
   }, [ttl, queryState, queryState.refetch]);
 
   const refreshing = queryState.runningRequest != null;
+  const { refetch, reset } = queryState;
 
   if (queryValue === EMPTY_VALUE) {
     return {
-      refetch: queryState.refetch,
+      refetch,
+      reset,
       data: undefined,
       loading: true,
       error: undefined,
@@ -229,7 +243,8 @@ export function useQueryRaw<Value>(
     data: queryValue.value,
     error: queryValue.error,
     loading: false,
-    refetch: queryState.refetch,
+    refetch,
+    reset,
     refreshing,
   } as QueryRawResult<Value>;
 }
@@ -238,7 +253,12 @@ export function useQuery<Value>(
   queryId: string | (() => string),
   fetcher: (key: string) => Promise<Value>,
   { initialData, ttl = DEFAULT_CACHE_TIME }: UseQueryProps<Value> = {},
-): [value: Value, refetch: () => Promise<Value | Error>, refreshing: boolean] {
+): [
+  value: Value,
+  refetch: () => Promise<Value | Error>,
+  refreshing: boolean,
+  reset: () => void,
+] {
   const key = typeof queryId !== 'string' ? queryId() : queryId;
   const { queryState, queryValue } = useQueryState(
     key,
@@ -260,7 +280,146 @@ export function useQuery<Value>(
     queryValue.value,
     queryState.refetch,
     queryState.runningRequest != null,
+    queryState.reset,
   ];
+}
+
+type Mutator<Payload, Value> = (parameters: {
+  payload: Payload;
+  optimisticUpdate?: Value;
+}) => Promise<Value | Error>;
+
+type MutableQueryRawResult<Payload, Value> =
+  | {
+      data: Value;
+      error: undefined;
+      loading: false;
+      refetch: () => Promise<Value | Error>;
+      reset: () => void;
+      mutate: Mutator<Payload, Value>;
+      refreshing: boolean;
+    }
+  | {
+      data: undefined;
+      error: Error;
+      loading: false;
+      refetch: () => Promise<Value | Error>;
+      reset: () => void;
+      mutate: Mutator<Payload, Value>;
+      refreshing: boolean;
+    }
+  | {
+      data: undefined;
+      error: undefined;
+      loading: true;
+      refetch: () => Promise<Value | Error>;
+      reset: () => void;
+      mutate: Mutator<Payload, Value>;
+      refreshing: boolean;
+    };
+
+export function useMutableQueryRaw<Payload, Value>(
+  queryId: string | (() => string),
+  fetcher: (key: string) => Promise<Value>,
+  mutator: (payload: Payload) => Promise<Value>,
+  { initialData, ttl = DEFAULT_CACHE_TIME }: UseQueryProps<Value> = {},
+): MutableQueryRawResult<Payload, Value> {
+  const key = typeof queryId !== 'string' ? queryId() : queryId;
+  const { queryState } = useQueryState(key, fetcher, ttl, initialData?.(key));
+
+  const queryValue = queryState.result;
+
+  useEffect(() => {
+    startRequestIfNecessary(queryState.refetch, queryState, ttl);
+  }, [ttl, queryState, queryState.refetch]);
+
+  const refreshing = queryState.runningRequest != null;
+  const mutate: Mutator<Payload, Value> = useMutator<Value, Payload>(
+    queryState,
+    mutator,
+  );
+  const { refetch, reset } = queryState;
+  if (queryValue === EMPTY_VALUE) {
+    return {
+      refetch,
+      reset,
+      mutate,
+      data: undefined,
+      loading: true,
+      error: undefined,
+      refreshing,
+    };
+  }
+
+  return {
+    data: queryValue.value,
+    error: queryValue.error,
+    loading: false,
+    refetch,
+    reset,
+    mutate,
+    refreshing,
+  } as MutableQueryRawResult<Payload, Value>;
+}
+export function useMutableQuery<Payload, Value>(
+  queryId: string | (() => string),
+  fetcher: (key: string) => Promise<Value>,
+  mutate: (payload: Payload) => Promise<Value>,
+  { initialData, ttl = DEFAULT_CACHE_TIME }: UseQueryProps<Value> = {},
+): [
+  value: Value,
+  refetch: () => Promise<Value | Error>,
+  refreshing: boolean,
+  mutate: Mutator<Payload, Value>,
+  reset: () => void,
+] {
+  const key = typeof queryId !== 'string' ? queryId() : queryId;
+  const { queryState, queryValue } = useQueryState(
+    key,
+    fetcher,
+    ttl,
+    initialData?.(key),
+  );
+  startRequestIfNecessary(queryState.refetch, queryState, ttl);
+
+  const mutator: Mutator<Payload, Value> = useMutator<Value, Payload>(
+    queryState,
+    mutate,
+  );
+
+  if (queryValue === EMPTY_VALUE) {
+    throw queryState.runningRequest;
+  }
+
+  if (queryValue.error) {
+    throw queryValue.error;
+  }
+
+  return [
+    queryValue.value,
+    queryState.refetch,
+    queryState.runningRequest != null,
+    mutator,
+    queryState.reset,
+  ];
+}
+
+function useMutator<Value, Payload>(
+  queryState: QueryState<Value>,
+  mutate: (payload: Payload) => Promise<Value>,
+): Mutator<Payload, Value> {
+  return useCallback(
+    (paramters) => {
+      if (paramters.optimisticUpdate) {
+        queryState.value$.next({
+          timestamp: Date.now(),
+          value: paramters.optimisticUpdate,
+        });
+      }
+      return connectPromiseToState(queryState, mutate(paramters.payload));
+    },
+    [mutate, queryState],
+  );
 }
 
 export function usePrefetchCallback<Value = unknown>(
