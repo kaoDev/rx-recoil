@@ -48,6 +48,7 @@ const DEFAULT_CACHE_TIME = 60000;
 const connectPromiseToState = <Value>(
   queryState: QueryState<Value>,
   requestPromise: Promise<Value>,
+  onlyApplySuccess = false
 ) => {
   function cleanUp() {
     queryState.lastTimestamp = Date.now();
@@ -65,7 +66,7 @@ const connectPromiseToState = <Value>(
       return value;
     })
     .catch((error: Error) => {
-      if (queryState.runningRequest === runningPromise) {
+      if (!onlyApplySuccess  && queryState.runningRequest === runningPromise) {
         cleanUp();
         queryState.result = { error, timestamp: Date.now() };
         queryState.value$.next(queryState.result);
@@ -410,13 +411,25 @@ function useMutator<Value, Payload>(
 ): Mutator<Payload, Value> {
   return useCallback(
     (paramters) => {
+      const currentValue = queryState.result;
       if (paramters.optimisticUpdate) {
         queryState.value$.next({
           timestamp: Date.now(),
           value: paramters.optimisticUpdate,
         });
       }
-      return connectPromiseToState(queryState, mutate(paramters.payload));
+
+      const catchedMutate: typeof mutate = async payload => {
+        try {
+          return await mutate(payload);
+        } catch(error) {
+          queryState.value$.next(currentValue)
+          queryState.result = currentValue
+          throw error
+        }
+      }
+
+      return connectPromiseToState(queryState, catchedMutate(paramters.payload), true);
     },
     [mutate, queryState],
   );
