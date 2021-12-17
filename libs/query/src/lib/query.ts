@@ -48,7 +48,7 @@ const DEFAULT_CACHE_TIME = 60000;
 const connectPromiseToState = <Value>(
   queryState: QueryState<Value>,
   requestPromise: Promise<Value>,
-  onlyApplySuccess = false
+  onlyApplySuccess = false,
 ) => {
   function cleanUp() {
     queryState.lastTimestamp = Date.now();
@@ -66,7 +66,7 @@ const connectPromiseToState = <Value>(
       return value;
     })
     .catch((error: Error) => {
-      if (!onlyApplySuccess  && queryState.runningRequest === runningPromise) {
+      if (!onlyApplySuccess && queryState.runningRequest === runningPromise) {
         cleanUp();
         queryState.result = { error, timestamp: Date.now() };
         queryState.value$.next(queryState.result);
@@ -419,17 +419,21 @@ function useMutator<Value, Payload>(
         });
       }
 
-      const catchedMutate: typeof mutate = async payload => {
+      const catchedMutate: typeof mutate = async (payload) => {
         try {
           return await mutate(payload);
-        } catch(error) {
-          queryState.value$.next(currentValue)
-          queryState.result = currentValue
-          throw error
+        } catch (error) {
+          queryState.value$.next(currentValue);
+          queryState.result = currentValue;
+          throw error;
         }
-      }
+      };
 
-      return connectPromiseToState(queryState, catchedMutate(paramters.payload), true);
+      return connectPromiseToState(
+        queryState,
+        catchedMutate(paramters.payload),
+        true,
+      );
     },
     [mutate, queryState],
   );
@@ -468,4 +472,16 @@ export function usePrefetchCallback<Value = unknown>(
     },
     [fetcher, forceRevalidate, prefetchPromises, queries],
   );
+}
+
+export function useRefetchQuery<Value = unknown>(
+  queryId: string | (() => string),
+) {
+  const [queries] = useAtom(queryRegistry);
+
+  return useCallback(async (): Promise<Value | Error | undefined> => {
+    const key = typeof queryId !== 'string' ? queryId() : queryId;
+    const query = queries.get(key) as QueryState<Value> | undefined;
+    return query?.refetch();
+  }, [queries, queryId]);
 }
