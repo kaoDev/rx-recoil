@@ -1,25 +1,25 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react'
 import {
 	asyncScheduler,
 	BehaviorSubject,
 	firstValueFrom,
 	isObservable as isObservableBase,
 	Observable,
-} from 'rxjs';
-import { filter, observeOn } from 'rxjs/operators';
-import { EMPTY_TYPE, EMPTY_VALUE } from './types';
-import { useLazyRef } from './useLazyRef';
+} from 'rxjs'
+import { filter, observeOn } from 'rxjs/operators'
+import { EMPTY_TYPE, EMPTY_VALUE } from './types'
+import { useLazyRef } from './useLazyRef'
 
 export function isPromise(value: unknown): value is PromiseLike<unknown> {
 	return (
 		!!value &&
 		typeof (value as any).subscribe !== 'function' &&
 		typeof (value as any).then === 'function'
-	);
+	)
 }
 
 export function isObservable<T>(value: unknown): value is Observable<T> {
-	return isObservableBase(value);
+	return isObservableBase(value)
 }
 
 export function useObservable<T>(
@@ -27,86 +27,86 @@ export function useObservable<T>(
 	initialValue: T,
 	synchronous = false,
 ) {
-	const currentValue$ = useLazyRef(() => new BehaviorSubject(initialValue));
+	const currentValue$ = useLazyRef(() => new BehaviorSubject(initialValue))
 
 	const value = useSyncExternalStore(
 		(onStoreChange) => {
 			const subscription = (
 				synchronous ? value$ : value$.pipe(observeOn(asyncScheduler))
 			).subscribe((next) => {
-				currentValue$.next(next);
-				onStoreChange();
-			});
+				currentValue$.next(next)
+				onStoreChange()
+			})
 
 			return () => {
-				subscription.unsubscribe();
-			};
+				subscription.unsubscribe()
+			}
 		},
 		() => {
-			return currentValue$.getValue();
+			return currentValue$.getValue()
 		},
-	);
+	)
 
-	return value;
+	return value
 }
 
 export function createUseValueHook<Value>(
 	value$: BehaviorSubject<Value>,
 	onError: (error: Error) => void,
 ) {
-	const listeners = new Set<() => void>();
-	const asyncListeners = new Set<() => void>();
+	const listeners = new Set<() => void>()
+	const asyncListeners = new Set<() => void>()
 
-	let initialValuePromise: Promise<unknown> | null = null;
+	let initialValuePromise: Promise<unknown> | null = null
 	function getInitialValuePromise() {
 		if (!initialValuePromise) {
 			initialValuePromise = firstValueFrom(
 				(value$ as Observable<unknown>).pipe(filter((v) => v !== EMPTY_VALUE)),
-			);
+			)
 		}
 
-		return initialValuePromise;
+		return initialValuePromise
 	}
 
-	const asyncStream = value$.pipe(observeOn(asyncScheduler));
+	const asyncStream = value$.pipe(observeOn(asyncScheduler))
 	const subscription = value$.subscribe({
 		error: (error) => onError(error),
 		next: () => {
 			for (const listener of listeners) {
-				listener();
+				listener()
 			}
 		},
-	});
+	})
 	const asyncSubscription = asyncStream.subscribe({
 		error: (error) => onError(error),
 		next: () => {
 			for (const listener of asyncListeners) {
-				listener();
+				listener()
 			}
 		},
-	});
+	})
 
 	function unsubscribe() {
-		subscription.unsubscribe();
-		asyncSubscription.unsubscribe();
+		subscription.unsubscribe()
+		asyncSubscription.unsubscribe()
 	}
 
 	function useValue(synchronous = false): Exclude<Value, EMPTY_TYPE> {
-		const currentValue = useObservable(value$, value$.value, synchronous);
+		const currentValue = useObservable(value$, value$.value, synchronous)
 
 		if (currentValue === EMPTY_VALUE) {
-			throw getInitialValuePromise();
+			throw getInitialValuePromise()
 		}
-		initialValuePromise = null;
+		initialValuePromise = null
 
-		return currentValue as Exclude<Value, EMPTY_TYPE>;
+		return currentValue as Exclude<Value, EMPTY_TYPE>
 	}
 
 	function useValueRaw(synchronous = false) {
-		const currentValue = useObservable(value$, value$.value, synchronous);
+		const currentValue = useObservable(value$, value$.value, synchronous)
 
-		return currentValue;
+		return currentValue
 	}
 
-	return { useValue, useValueRaw, unsubscribe };
+	return { useValue, useValueRaw, unsubscribe }
 }

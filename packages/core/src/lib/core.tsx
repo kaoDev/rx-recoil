@@ -5,11 +5,11 @@ import {
 	useRef,
 	useState,
 	useEffect,
-} from 'react';
-import { createAtom } from './atom';
-import { ErrorReporter } from './reportError';
-import { createSelector } from './selector';
-import { createPublicStateWriteAccess } from './stateAccess';
+} from 'react'
+import { createAtom } from './atom'
+import { ErrorReporter } from './reportError'
+import { createSelector } from './selector'
+import { createPublicStateWriteAccess } from './stateAccess'
 import {
 	AtomDefinition,
 	EMPTY_TYPE,
@@ -25,7 +25,7 @@ import {
 	StateType,
 	SubscribableOrPromise,
 	UsageKey,
-} from './types';
+} from './types'
 
 function cleanupUsage({
 	rootState,
@@ -33,12 +33,12 @@ function cleanupUsage({
 	stateMap,
 	stateSleepCache,
 }: {
-	stateSleepCache: Map<StateKey, unknown>;
-	rootState: InternalRegisteredState<unknown, unknown>;
-	stateMap: Map<StateKey, InternalRegisteredState<unknown, unknown>>;
-	usageId: UsageKey;
+	stateSleepCache: Map<StateKey, unknown>
+	rootState: InternalRegisteredState<unknown, unknown>
+	stateMap: Map<StateKey, InternalRegisteredState<unknown, unknown>>
+	usageId: UsageKey
 }) {
-	rootState.refs.delete(usageId);
+	rootState.refs.delete(usageId)
 
 	if (rootState.refs.size === 0 && rootState.dependencies) {
 		for (const dependency of rootState.dependencies) {
@@ -47,17 +47,17 @@ function cleanupUsage({
 				usageId: rootState.state.key,
 				stateMap,
 				stateSleepCache,
-			});
+			})
 		}
 	}
 
 	if (!rootState.state.volatile) {
-		stateSleepCache.set(rootState.state.key, rootState.state.value$.value);
+		stateSleepCache.set(rootState.state.key, rootState.state.value$.value)
 	}
 
 	if (rootState.refs.size === 0) {
-		rootState.onUnmount?.();
-		stateMap.delete(rootState.state.key);
+		rootState.onUnmount?.()
+		stateMap.delete(rootState.state.key)
 	}
 }
 
@@ -66,7 +66,7 @@ function registerStateUsage(
 	usageId?: UsageKey,
 ) {
 	if (usageId !== undefined && usageId !== stateObject.state.key) {
-		stateObject.refs.add(usageId);
+		stateObject.refs.add(usageId)
 	}
 }
 
@@ -77,43 +77,43 @@ function getStateObject<Value, UpdateEvent>(
 	createStateObject: () => InternalRegisteredState<Value, UpdateEvent>,
 	stateAcces: InternalStateAccess,
 ): InternalRegisteredState<Value, UpdateEvent> {
-	let state = stateMap.get(definition.key);
+	let state = stateMap.get(definition.key)
 
 	if (!state) {
-		state = createStateObject();
-		stateMap.set(definition.key, state);
+		state = createStateObject()
+		stateMap.set(definition.key, state)
 
 		if (definition.onMount) {
 			const publicStateAccess = createPublicStateWriteAccess(
 				stateAcces,
 				definition.key,
-			);
-			const cleanUp = definition.onMount?.(publicStateAccess);
+			)
+			const cleanUp = definition.onMount?.(publicStateAccess)
 
-			const sharedStateObject = stateMap.get(definition.key);
-			const originalOnUnmount = sharedStateObject?.onUnmount;
+			const sharedStateObject = stateMap.get(definition.key)
+			const originalOnUnmount = sharedStateObject?.onUnmount
 
 			if (sharedStateObject) {
 				sharedStateObject.onUnmount = () => {
-					sharedStateObject.onUnmount = undefined;
+					sharedStateObject.onUnmount = undefined
 					cleanupUsage({
 						rootState: sharedStateObject,
 						usageId: sharedStateObject.state.key,
 						stateMap,
 						stateSleepCache,
-					});
+					})
 					if (cleanUp) {
 						Promise.all([cleanUp]).then(([mountingCleanup]) => {
-							if (mountingCleanup) mountingCleanup();
-						});
+							if (mountingCleanup) mountingCleanup()
+						})
 					}
-					originalOnUnmount?.();
-				};
+					originalOnUnmount?.()
+				}
 			}
 		}
 	}
 
-	return state as InternalRegisteredState<Value, UpdateEvent>;
+	return state as InternalRegisteredState<Value, UpdateEvent>
 }
 
 function createGetState(
@@ -134,9 +134,9 @@ function createGetState(
 					definition,
 					() => createAtom(definition, stateSleepCache, report),
 					stateAcces,
-				);
-				registerStateUsage(atom, usageId);
-				return atom;
+				)
+				registerStateUsage(atom, usageId)
+				return atom
 			}
 			case StateType.Selector:
 			case StateType.MutatableSelector: {
@@ -146,138 +146,138 @@ function createGetState(
 					definition,
 					() => createSelector(definition, stateSleepCache, stateAcces, report),
 					stateAcces,
-				);
+				)
 
-				registerStateUsage(selector, usageId);
-				return selector as InternalRegisteredState<Value, UpdateEvent>;
+				registerStateUsage(selector, usageId)
+				return selector as InternalRegisteredState<Value, UpdateEvent>
 			}
 		}
 	}
 
-	getState.stateMap = stateMap;
-	getState.stateSleepCache = stateSleepCache;
+	getState.stateMap = stateMap
+	getState.stateSleepCache = stateSleepCache
 
-	return getState;
+	return getState
 }
 
 export function createStateContextValue(report?: ErrorReporter) {
 	const stateMap = new Map<
 		StateKey,
 		InternalRegisteredState<unknown, unknown>
-	>();
-	const stateSleepCache = new Map<StateKey, unknown>();
+	>()
+	const stateSleepCache = new Map<StateKey, unknown>()
 
 	const internalStateAcces: InternalStateAccess = {
 		getStateObject: function getStateObject<Value>(
 			definition: StateDefinition<Value, unknown>,
 			usageId: UsageKey,
 		) {
-			const state = contextGetter<Value, unknown>(definition, usageId);
-			return state;
+			const state = contextGetter<Value, unknown>(definition, usageId)
+			return state
 		},
 		get: function get<Value>(
 			definition: StateDefinition<Value, unknown>,
 			usageId: UsageKey,
 		) {
-			const { state } = contextGetter<Value, unknown>(definition, usageId);
-			return (state as ReadOnlyState<Value>).value$.value;
+			const { state } = contextGetter<Value, unknown>(definition, usageId)
+			return (state as ReadOnlyState<Value>).value$.value
 		},
 		set: function set<Value, UpdateEvent>(
 			definition: MutatableStateDefinition<Value, UpdateEvent>,
 			usageId: UsageKey,
 			change: UpdateEvent,
 		) {
-			const { state } = contextGetter(definition, usageId);
-			(state as MutatableState<Value, UpdateEvent>).dispatchUpdate(change);
+			const { state } = contextGetter(definition, usageId)
+			;(state as MutatableState<Value, UpdateEvent>).dispatchUpdate(change)
 		},
-	};
+	}
 
 	const contextGetter = createGetState(
 		stateMap,
 		stateSleepCache,
 		internalStateAcces,
 		report,
-	);
+	)
 
-	return contextGetter;
+	return contextGetter
 }
 
-type StateRootContextValueType = ReturnType<typeof createStateContextValue>;
+type StateRootContextValueType = ReturnType<typeof createStateContextValue>
 
 // initialize with null to enforce usage of StateRoot provider with controlled context
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-const stateContext = createContext(null! as StateRootContextValueType);
+const stateContext = createContext(null! as StateRootContextValueType)
 
 export function StateRoot({
 	children,
 	report,
 	context,
 }: {
-	children?: ReactNode;
-	report?: ErrorReporter;
-	context?: ReturnType<typeof createStateContextValue>;
+	children?: ReactNode
+	report?: ErrorReporter
+	context?: ReturnType<typeof createStateContextValue>
 }) {
 	const [fallbackContextValue] = useState(
 		() => context ?? createStateContextValue(report),
-	);
+	)
 	return (
 		<stateContext.Provider value={context ?? fallbackContextValue}>
 			{children}
 		</stateContext.Provider>
-	);
+	)
 }
 
 type UnpackedAsyncValue<T> = T extends SubscribableOrPromise<infer U>
 	? U | EMPTY_TYPE
-	: T;
+	: T
 
 export function useAtomicState<Value>(
 	identifier: SelectorDefinition<Value>,
-): ReadOnlyState<UnpackedAsyncValue<Value>>;
+): ReadOnlyState<UnpackedAsyncValue<Value>>
 export function useAtomicState<Value, UpdateEvent>(
 	identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
-): MutatableState<UnpackedAsyncValue<Value>, UpdateEvent>;
+): MutatableState<UnpackedAsyncValue<Value>, UpdateEvent>
 export function useAtomicState<Value, UpdateEvent>(
 	identifier: AtomDefinition<Value, UpdateEvent>,
-): MutatableState<Value, UpdateEvent>;
+): MutatableState<Value, UpdateEvent>
 export function useAtomicState<Value, UpdateEvent>(
 	identifier: StateDefinition<Value, UpdateEvent>,
 ) {
 	const stateReference = useAtomicStateInternal(
 		identifier as AtomDefinition<Value, UpdateEvent>,
-	);
+	)
 
-	return stateReference.state;
+	return stateReference.state
 }
 
 function useAtomicStateInternal<Value, UpdateEvent>(
 	identifier: StateDefinition<Value, UpdateEvent>,
 ) {
-	const getStateObject = useContext(stateContext);
+	const getStateObject = useContext(stateContext)
 	if (!getStateObject) {
-		throw new Error('rx-recoil StateRoot context is missing');
+		throw new Error('rx-recoil StateRoot context is missing')
 	}
-	const usageId = useRef(Symbol(`usage:${identifier.debugKey}`));
-	const stateReference = useRef<InternalRegisteredState<Value, UpdateEvent>>();
-	const registered = useRef(false);
+	const usageId = useRef(Symbol(`usage:${identifier.debugKey}`))
+	const stateReference = useRef<InternalRegisteredState<Value, UpdateEvent>>()
+	const registered = useRef(false)
 
 	if (
 		!stateReference.current ||
 		stateReference.current.state.key !== identifier.key
 	) {
-		stateReference.current = getStateObject(identifier, usageId.current);
-		registered.current = false;
+		stateReference.current = getStateObject(identifier, usageId.current)
+		registered.current = false
 	}
 
 	if (!registered.current) {
-		stateReference.current?.refs.delete(usageId.current);
+		stateReference.current?.refs.delete(usageId.current)
 	}
 
-	const registeredStateObject = stateReference.current;
+	const registeredStateObject = stateReference.current
 
 	useEffect(() => {
-		registerStateUsage(registeredStateObject, usageId.current);
-		registered.current = true;
+		registerStateUsage(registeredStateObject, usageId.current)
+		registered.current = true
 
 		return () => {
 			cleanupUsage({
@@ -285,76 +285,76 @@ function useAtomicStateInternal<Value, UpdateEvent>(
 				usageId: usageId.current,
 				stateMap: getStateObject.stateMap,
 				stateSleepCache: getStateObject.stateSleepCache,
-			});
-		};
+			})
+		}
 	}, [
 		getStateObject.stateMap,
 		getStateObject.stateSleepCache,
 		registeredStateObject,
 		registeredStateObject.state.key,
-	]);
+	])
 
-	return stateReference.current;
+	return stateReference.current
 }
 
 export function useAtom<Value>(
 	identifier: SelectorDefinition<Value>,
 	options?: { sync?: boolean },
-): [value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>, _: never];
+): [value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>, _: never]
 export function useAtom<Value, UpdateEvent>(
 	identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
 	options?: { sync?: boolean },
 ): [
 	value: Exclude<UnpackedAsyncValue<Value>, EMPTY_TYPE>,
 	dispatchUpdate: (value: UpdateEvent) => void,
-];
+]
 export function useAtom<Value, UpdateEvent>(
 	identifier: AtomDefinition<Value, UpdateEvent>,
 	options?: { sync?: boolean },
 ): [
 	value: Exclude<Value, EMPTY_TYPE>,
 	dispatchUpdate: (value: UpdateEvent) => void,
-];
+]
 export function useAtom<Value, UpdateEvent>(
 	identifier: StateDefinition<Value, UpdateEvent>,
 	{ sync }: { sync?: boolean } = {},
 ) {
 	const stateReference = useAtomicStateInternal(
 		identifier as AtomDefinition<Value | EMPTY_TYPE, UpdateEvent>,
-	);
+	)
 
-	const value = stateReference.state.useValue(sync);
+	const value = stateReference.state.useValue(sync)
 
 	return [
 		value,
 		(stateReference.state as MutatableState<Value, UpdateEvent>).dispatchUpdate,
-	] as const;
+	] as const
 }
 
 export function useAtomRaw<Value>(
 	identifier: SelectorDefinition<Value>,
 	options?: { sync?: boolean },
-): [value: UnpackedAsyncValue<Value>, _: never];
+): [value: UnpackedAsyncValue<Value>, _: never]
 export function useAtomRaw<Value, UpdateEvent>(
 	identifier: MutatableSelectorDefinition<Value, UpdateEvent>,
 	options?: { sync?: boolean },
 ): [
 	value: UnpackedAsyncValue<Value>,
 	dispatchUpdate: (value: UpdateEvent) => void,
-];
+]
 export function useAtomRaw<Value, UpdateEvent>(
 	identifier: AtomDefinition<Value, UpdateEvent>,
 	options?: { sync?: boolean },
-): [value: Value, dispatchUpdate: (value: UpdateEvent) => void];
+): [value: Value, dispatchUpdate: (value: UpdateEvent) => void]
 export function useAtomRaw<Value, UpdateEvent>(
 	identifier: StateDefinition<Value, UpdateEvent>,
 	{ sync }: { sync?: boolean } = {},
 ) {
 	const { useValueRaw, dispatchUpdate } = useAtomicState(
 		identifier as AtomDefinition<Value, UpdateEvent>,
-	);
+	)
 
-	const value = useValueRaw(sync);
+	const value = useValueRaw(sync)
 
-	return [value, dispatchUpdate] as const;
+	return [value, dispatchUpdate] as const
 }

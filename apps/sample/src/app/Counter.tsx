@@ -1,8 +1,8 @@
-import { EMPTY_VALUE, useAtom, useAtomicState } from '@rx-recoil/core';
-import { persistedAtom } from '@rx-recoil/persistence';
-import { Suspense, useCallback, useEffect } from 'react';
-import { interval } from 'rxjs';
-import { filter, withLatestFrom } from 'rxjs/operators';
+import { EMPTY_VALUE, useAtom, useAtomicState } from '@rx-recoil/core'
+import { persistedAtom } from '@rx-recoil/persistence'
+import { Suspense, useCallback, useEffect } from 'react'
+import { interval } from 'rxjs'
+import { filter, withLatestFrom } from 'rxjs/operators'
 
 const countState = persistedAtom({
 	key: 'count',
@@ -10,10 +10,10 @@ const countState = persistedAtom({
 	version: 0,
 	fallbackValue: 0,
 	debugKey: 'count',
-});
+})
 
 function CounterAutoIncrementEffect() {
-	const { dispatchUpdate, value$ } = useAtomicState(countState);
+	const { dispatchUpdate, value$ } = useAtomicState(countState)
 
 	useEffect(() => {
 		const sub = interval(1000)
@@ -22,40 +22,40 @@ function CounterAutoIncrementEffect() {
 				filter((count): count is number => count !== EMPTY_VALUE),
 			)
 			.subscribe((count) => {
-				dispatchUpdate(count + 1);
-			});
+				dispatchUpdate(count + 1)
+			})
 
-		return () => sub.unsubscribe();
-	}, [dispatchUpdate, value$]);
+		return () => sub.unsubscribe()
+	}, [dispatchUpdate, value$])
 
-	return null;
+	return null
 }
 
 function ResetButton() {
-	const { dispatchUpdate } = useAtomicState(countState);
+	const { dispatchUpdate } = useAtomicState(countState)
 	const reset = useCallback(() => {
-		dispatchUpdate(0);
-	}, [dispatchUpdate]);
+		dispatchUpdate(0)
+	}, [dispatchUpdate])
 
 	return (
 		<p>
 			<button onClick={reset}>reset</button>
 		</p>
-	);
+	)
 }
 
 function ManualCounter() {
-	const [count, setCount] = useAtom(countState);
+	const [count, setCount] = useAtom(countState)
 	const increment = () => {
-		setCount(count + 1);
-	};
+		setCount(count + 1)
+	}
 
 	return (
 		<>
 			<p>{count}</p>
 			<button onClick={increment}>+ 1</button>
 		</>
-	);
+	)
 }
 
 export function Counter() {
@@ -68,5 +68,5 @@ export function Counter() {
 			<ResetButton />
 			<CounterAutoIncrementEffect />
 		</section>
-	);
+	)
 }

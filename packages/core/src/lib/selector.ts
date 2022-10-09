@@ -1,11 +1,11 @@
-import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs';
-import { map, mergeMap } from 'rxjs/operators';
-import { createUseValueHook, isPromise, isObservable } from './helpers';
-import { ErrorReporter, reportError } from './reportError';
+import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs'
+import { map, mergeMap } from 'rxjs/operators'
+import { createUseValueHook, isPromise, isObservable } from './helpers'
+import { ErrorReporter, reportError } from './reportError'
 import {
 	createPublicStateReadAccess,
 	createPublicStateWriteAccess,
-} from './stateAccess';
+} from './stateAccess'
 import {
 	AtomDefinition,
 	EMPTY_TYPE,
@@ -20,34 +20,34 @@ import {
 	StateType,
 	StateWriteAccess,
 	SubscribableOrPromise,
-} from './types';
+} from './types'
 
 interface SelectorOptions<Value> {
-	debugKey?: string;
-	volatile?: boolean;
-	initialValue?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>;
+	debugKey?: string
+	volatile?: boolean
+	initialValue?: Value | EMPTY_TYPE | Promise<Value | EMPTY_TYPE>
 }
 
 // read-only selector
 export function selector<Value>(
 	read: (stateAccess: StateReadAccess) => Value,
 	options?: SelectorOptions<Value>,
-): SelectorDefinition<Value>;
+): SelectorDefinition<Value>
 export function selector<Value>(
 	read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
 	options?: SelectorOptions<Value>,
-): SelectorDefinition<Value | EMPTY_TYPE>;
+): SelectorDefinition<Value | EMPTY_TYPE>
 // writable derived selector
 export function selector<Value, Update>(
 	read: (stateAccess: StateReadAccess) => Value,
 	write: (stateAccess: StateWriteAccess, update: Update) => void,
 	options?: SelectorOptions<Value>,
-): MutatableSelectorDefinition<Value, Update>;
+): MutatableSelectorDefinition<Value, Update>
 export function selector<Value, Update>(
 	read: (stateAccess: StateReadAccess) => SubscribableOrPromise<Value>,
 	write: (stateAccess: StateWriteAccess, update: Update) => void,
 	options?: SelectorOptions<Value>,
-): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>;
+): MutatableSelectorDefinition<Value | EMPTY_TYPE, Update>
 export function selector<Value, Update>(
 	read: (stateAccess: StateReadAccess) => Value | SubscribableOrPromise<Value>,
 	write?:
@@ -56,8 +56,8 @@ export function selector<Value, Update>(
 	options?: SelectorOptions<Value>,
 ): SelectorDefinition<Value> | MutatableSelectorDefinition<Value, Update> {
 	if (typeof write === 'object') {
-		options = write;
-		write = undefined;
+		options = write
+		write = undefined
 	}
 
 	if (write) {
@@ -67,14 +67,14 @@ export function selector<Value, Update>(
 			read,
 			write,
 			...options,
-		};
+		}
 	}
 	return {
 		key: Symbol(),
 		type: StateType.Selector,
 		read,
 		...options,
-	};
+	}
 }
 
 export function createSelector<Value, Update>(
@@ -87,70 +87,67 @@ export function createSelector<Value, Update>(
 ): InternalRegisteredState<Value | EMPTY_TYPE, Update> {
 	const initialValueFromSleep = stateSleepCache.get(selectorDefinition.key) as
 		| Value
-		| undefined;
-	const dependencies = new Set<InternalRegisteredState<unknown, unknown>>();
+		| undefined
+	const dependencies = new Set<InternalRegisteredState<unknown, unknown>>()
 
 	function getStateSubscribing<Value>(
 		definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>,
 	) {
-		const state = stateAccess.getStateObject(
-			definition,
-			selectorDefinition.key,
-		);
+		const state = stateAccess.getStateObject(definition, selectorDefinition.key)
 		if (!dependencies.has(state)) {
-			dependencies.add(state);
+			dependencies.add(state)
 		}
-		return state.state;
+		return state.state
 	}
 
 	const subscribingStateAccess: StateReadAccess = {
 		getStateObject: function getStateObject<Value>(
 			definition: ReadOnlyStateDefinition<Value>,
 		) {
-			return getStateSubscribing(definition);
+			return getStateSubscribing(definition)
 		},
 		get: function get<Value>(
 			definition: AtomDefinition<Value, unknown> | SelectorDefinition<Value>,
 		) {
-			const state = getStateSubscribing(definition);
-			return state.value$.value;
+			const state = getStateSubscribing(definition)
+			return state.value$.value
 		},
-	};
+	}
 
 	const publicStateAccess = createPublicStateReadAccess(
 		stateAccess,
 		selectorDefinition.key,
-	);
+	)
 
-	const initialValue = selectorDefinition.read(subscribingStateAccess);
+	const initialValue = selectorDefinition.read(subscribingStateAccess)
 
 	const fallback = isPromise(selectorDefinition.initialValue)
 		? EMPTY_VALUE
-		: selectorDefinition.initialValue ?? EMPTY_VALUE;
+		: selectorDefinition.initialValue ?? EMPTY_VALUE
 
 	const value$ = new BehaviorSubject(
 		initialValueFromSleep ??
 			(isPromise(initialValue) || isObservable(initialValue)
 				? fallback
 				: initialValue),
-	);
-	const onError = reportError(report);
+	)
+	const onError = reportError(report)
 
-	let initialValueSubscription: undefined | Unsubscribable;
+	let initialValueSubscription: undefined | Unsubscribable
 
 	if (isPromise(initialValue) || isObservable(initialValue)) {
 		initialValueSubscription = (
 			isObservable(initialValue) ? initialValue : from(initialValue)
 		).subscribe({
 			next: (nextValue: Value) => {
-				value$.next(nextValue);
+				value$.next(nextValue)
 			},
 			error: (error) =>
 				reportError(report)(
 					error,
 					`Exception reading intial value for selector`,
 				),
-		});
+		})
 	}
 
 	const subscription =
@@ -164,21 +161,21 @@ export function createSelector<Value, Update>(
 				map(() => selectorDefinition.read(publicStateAccess)),
 				mergeMap((value) => {
 					if (isObservable(value)) {
-						return value;
+						return value
 					}
 					if (isPromise(value)) {
-						return from(value);
+						return from(value)
 					}
-					return of(value as Value);
+					return of(value as Value)
 				}),
 			)
 			.subscribe(
 				(nextValue: Value) => {
-					value$.next(nextValue);
+					value$.next(nextValue)
 				},
 				(error) =>
 					reportError(report)(error, `Exception in selector value stream`),
-			);
+			)
 
 	const {
 		useValue,
@@ -186,28 +183,28 @@ export function createSelector<Value, Update>(
 		unsubscribe: unsubscribeValueHook,
 	} = createUseValueHook(value$, (e) =>
 		onError(e, `Exception in selector value stream`),
-	);
+	)
 
 	function onUnmount() {
-		subscription.unsubscribe();
-		unsubscribeValueHook();
-		initialValueSubscription?.unsubscribe();
+		subscription.unsubscribe()
+		unsubscribeValueHook()
+		initialValueSubscription?.unsubscribe()
 	}
 
-	let dispatchUpdate: undefined | ((change: Update) => void) = undefined;
+	let dispatchUpdate: undefined | ((change: Update) => void) = undefined
 
 	if (Object.prototype.hasOwnProperty.call(selectorDefinition, 'write')) {
 		const publicStateAccess = createPublicStateWriteAccess(
 			stateAccess,
 			selectorDefinition.key,
-		);
+		)
 
 		dispatchUpdate = function dispatchUpdate(change: Update) {
-			(selectorDefinition as MutatableSelectorDefinition<Value, Update>).write(
+			;(selectorDefinition as MutatableSelectorDefinition<Value, Update>).write(
 				publicStateAccess,
 				change,
-			);
-		};
+			)
+		}
 
 		return {
 			state: {
@@ -222,7 +219,7 @@ export function createSelector<Value, Update>(
 			dependencies,
 			onUnmount,
 			refs: new Set(),
-		};
+		}
 	}
 
 	return {
@@ -237,5 +234,5 @@ export function createSelector<Value, Update>(
 		dependencies,
 		onUnmount,
 		refs: new Set(),
-	};
+	}
 }

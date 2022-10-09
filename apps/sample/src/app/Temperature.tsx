@@ -1,41 +1,41 @@
-import React from 'react';
-import { atom, selector, useAtom } from '@rx-recoil/core';
+import React from 'react'
+import { atom, selector, useAtom } from '@rx-recoil/core'
 
 function fahrenheitToCelsius(fahrenheit: number) {
 	if (isNaN(fahrenheit)) {
-		fahrenheit = 0;
+		fahrenheit = 0
 	}
-	return ((fahrenheit - 32) * 5) / 9;
+	return ((fahrenheit - 32) * 5) / 9
 }
 function celsiusToFahrenheit(celsius: number) {
 	if (isNaN(celsius)) {
-		celsius = 0;
+		celsius = 0
 	}
-	return (celsius * 9) / 5 + 32;
+	return (celsius * 9) / 5 + 32
 }
 
 const tempCelsius = atom<number, number>(0, {
 	debugKey: 'tempCelsius',
 	volatile: false,
-});
+})
 
 const tempFahrenheit = selector(
 	({ get }) => celsiusToFahrenheit(get(tempCelsius)),
 	({ set }, newValue: number) => {
-		set(tempCelsius, fahrenheitToCelsius(newValue));
+		set(tempCelsius, fahrenheitToCelsius(newValue))
 	},
 	{
 		volatile: true,
 	},
-);
+)
 
 export function Temperature() {
-	const [tempF, setTempF] = useAtom(tempFahrenheit);
-	const [tempC, setTempC] = useAtom(tempCelsius);
+	const [tempF, setTempF] = useAtom(tempFahrenheit)
+	const [tempC, setTempC] = useAtom(tempCelsius)
 
-	const addTenCelsius = () => setTempC(tempC + 10);
-	const addTenFahrenheit = () => setTempF(tempF + 10);
-	const reset = () => setTempC(0);
+	const addTenCelsius = () => setTempC(tempC + 10)
+	const addTenFahrenheit = () => setTempF(tempF + 10)
+	const reset = () => setTempC(0)
 
 	return (
 		<section>
@@ -72,5 +72,5 @@ export function Temperature() {
 				<button onClick={reset}>Reset</button>
 			</p>
 		</section>
-	);
+	)
 }

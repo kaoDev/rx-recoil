@@ -25,7 +25,9 @@ var __awaiter =
 				}
 			}
 			function step(result) {
-				result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected)
+				result.done
+					? resolve(result.value)
+					: adopt(result.value).then(fulfilled, rejected)
 			}
 			step((generator = generator.apply(thisArg, _arguments || [])).next())
 		})
@@ -151,8 +153,12 @@ function tscExecutor(_options, context) {
 						throw new Error('Project name is required')
 					}
 					libRoot = context.workspace.projects[context.projectName].root
-					tsConfigAppExists = (0, fs_1.existsSync)(''.concat(libRoot, '/tsconfig.app.json'))
-					tsConfigLibExists = (0, fs_1.existsSync)(''.concat(libRoot, '/tsconfig.lib.json'))
+					tsConfigAppExists = (0, fs_1.existsSync)(
+						''.concat(libRoot, '/tsconfig.app.json'),
+					)
+					tsConfigLibExists = (0, fs_1.existsSync)(
+						''.concat(libRoot, '/tsconfig.lib.json'),
+					)
 					tsConfigs = [
 						tsConfigAppExists ? 'tsconfig.app.json' : null,
 						tsConfigLibExists ? 'tsconfig.lib.json' : null,
@@ -164,7 +170,12 @@ function tscExecutor(_options, context) {
 								return new Promise(function (resolve) {
 									var child = (0, child_process_1.spawn)(
 										packageManagerCmd,
-										['tsc', '-p', ''.concat(libRoot, '/').concat(configFile), '--noEmit'],
+										[
+											'tsc',
+											'-p',
+											''.concat(libRoot, '/').concat(configFile),
+											'--noEmit',
+										],
 										{
 											stdio: 'inherit',
 										},

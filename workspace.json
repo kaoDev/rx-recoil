@@ -1,10 +1,10 @@
 {
-  "$schema": "./node_modules/nx/schemas/workspace-schema.json",
-  "version": 2,
-  "projects": {
-    "core": "packages/core",
-    "persistence": "packages/persistence",
-    "query": "packages/query",
-    "sample": "apps/sample"
-  }
+	"$schema": "./node_modules/nx/schemas/workspace-schema.json",
+	"version": 2,
+	"projects": {
+		"core": "packages/core",
+		"persistence": "packages/persistence",
+		"query": "packages/query",
+		"sample": "apps/sample"
+	}
 }

@@ -1,1 +1,1 @@
-export * from './lib/persistence';
+export * from './lib/persistence'

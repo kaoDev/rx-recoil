@@ -1,8 +1,8 @@
-import { createStateContextValue, StateRoot } from '@rx-recoil/core';
-import { renderHook, RenderHookOptions } from '@testing-library/react';
-import { Suspense } from 'react';
+import { createStateContextValue, StateRoot } from '@rx-recoil/core'
+import { renderHook, RenderHookOptions } from '@testing-library/react'
+import { Suspense } from 'react'
 
-type StateRootContextValue = ReturnType<typeof createStateContextValue>;
+type StateRootContextValue = ReturnType<typeof createStateContextValue>
 
 export function renderHookInStateRoot<Result, Props>(
 	hook: (initialProps: Props) => Result,
@@ -21,5 +21,5 @@ export function renderHookInStateRoot<Result, Props>(
 			</StateRoot>
 		),
 		...options,
-	});
+	})
 }

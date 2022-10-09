@@ -1,6 +1,6 @@
-import { BehaviorSubject } from 'rxjs';
-import { createUseValueHook } from './helpers';
-import { ErrorReporter, reportError } from './reportError';
+import { BehaviorSubject } from 'rxjs'
+import { createUseValueHook } from './helpers'
+import { ErrorReporter, reportError } from './reportError'
 import {
 	AtomDefinition,
 	InternalRegisteredState,
@@ -8,10 +8,10 @@ import {
 	StateKey,
 	StateType,
 	UpdateFunction,
-} from './types';
+} from './types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const identity: UpdateFunction<any, any> = (_, change) => change;
+const identity: UpdateFunction<any, any> = (_, change) => change
 
 export function atom<Value, UpdateEvent = Value>(
 	initialValue: Value | (() => Value),
@@ -20,9 +20,9 @@ export function atom<Value, UpdateEvent = Value>(
 		debugKey,
 		volatile,
 	}: {
-		update?: UpdateFunction<Value, UpdateEvent>;
-		debugKey?: string;
-		volatile?: boolean;
+		update?: UpdateFunction<Value, UpdateEvent>
+		debugKey?: string
+		volatile?: boolean
 	} = {},
 ): AtomDefinition<Value, UpdateEvent> {
 	return {
@@ -32,17 +32,17 @@ export function atom<Value, UpdateEvent = Value>(
 		update,
 		debugKey,
 		volatile,
-	};
+	}
 }
 
 function readInitialValue<Value>(
 	init: AtomDefinition<Value, unknown>['initialValue'],
 ) {
 	if (typeof init === 'function') {
-		return (init as () => Value)();
+		return (init as () => Value)()
 	}
 
-	return init;
+	return init
 }
 
 export function createAtom<Value, UpdateEvent = Value>(
@@ -52,25 +52,25 @@ export function createAtom<Value, UpdateEvent = Value>(
 ): InternalRegisteredState<Value, UpdateEvent> {
 	const initialValueFromSleep = stateSleepCache.get(atomDefinition.key) as
 		| Value
-		| undefined;
+		| undefined
 	const value$ = new BehaviorSubject(
 		initialValueFromSleep ?? readInitialValue(atomDefinition.initialValue),
-	);
+	)
 
 	function dispatchUpdate(change: UpdateEvent) {
-		const current = value$.value;
-		const next = atomDefinition.update(current, change);
+		const current = value$.value
+		const next = atomDefinition.update(current, change)
 		if (next !== current) {
-			value$.next(next);
+			value$.next(next)
 		}
 	}
 
-	const onError = reportError(report);
+	const onError = reportError(report)
 
 	const { useValue, useValueRaw, unsubscribe } = createUseValueHook(
 		value$,
 		(e) => onError(e, `Exception in atom value stream`),
-	);
+	)
 
 	const atom: MutatableState<Value, UpdateEvent> = {
 		useValue,
@@ -80,11 +80,11 @@ export function createAtom<Value, UpdateEvent = Value>(
 		key: atomDefinition.key,
 		debugKey: atomDefinition.debugKey,
 		volatile: atomDefinition.volatile,
-	};
+	}
 
 	return {
 		state: atom,
 		refs: new Set(),
 		onUnmount: () => unsubscribe(),
-	};
+	}
 }

@@ -1,13 +1,13 @@
-import { useQuery } from '@rx-recoil/query';
-import { Suspense, useState } from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
+import { useQuery } from '@rx-recoil/query'
+import { Suspense, useState } from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 
 function ErrorFallback({
 	error,
 	resetErrorBoundary,
 }: {
-	error: Error;
-	resetErrorBoundary: () => void;
+	error: Error
+	resetErrorBoundary: () => void
 }) {
 	return (
 		<div role="alert">
@@ -15,31 +15,31 @@ function ErrorFallback({
 			<pre>{error.message}</pre>
 			<button onClick={resetErrorBoundary}>Reset</button>
 		</div>
-	);
+	)
 }
 
 const todoFetcher = (
 	id: string,
 ): Promise<{
-	userId: number;
-	id: number;
-	title: string;
-	completed: boolean;
+	userId: number
+	id: number
+	title: string
+	completed: boolean
 }> => {
 	return fetch(`https://jsonplaceholder.typicode.com/todos/${id}`).then(
 		(response) => {
 			if (response.status >= 400) {
 				throw new Error(
 					`Failed to request data, got ${response.status} as server status`,
-				);
+				)
 			}
-			return response.json();
+			return response.json()
 		},
-	);
-};
+	)
+}
 
 function Todo({ id }: { id: string }) {
-	const [todo] = useQuery(id, todoFetcher);
+	const [todo] = useQuery(id, todoFetcher)
 	return (
 		<div style={{ textAlign: 'left' }}>
 			<pre
@@ -48,11 +48,11 @@ function Todo({ id }: { id: string }) {
 				}}
 			/>
 		</div>
-	);
+	)
 }
 
 export function QueryBenchmark() {
-	const [id, setId] = useState('1');
+	const [id, setId] = useState('1')
 	return (
 		<section>
 			<h2>Todo:</h2>
@@ -77,5 +77,5 @@ export function QueryBenchmark() {
 				</Suspense>
 			</ErrorBoundary>
 		</section>
-	);
+	)
 }
