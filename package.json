@@ -38,9 +38,9 @@
 		"type-check": "npx nx run-many --target=tsCheck --all",
 		"prepublish": "npm run sync-version && npm run test-all && npm run type-check && npm run lint-all && npm run build-all",
 		"sync-version": "node --experimental-json-modules --experimental-modules ./scripts/syncVersion.mjs",
-		"publish:core": "npm publish dist/libs/core",
-		"publish:persistence": "npm publish dist/libs/persistence",
-		"publish:query": "npm publish dist/libs/query",
+		"publish:core": "npm publish dist/packages/core",
+		"publish:persistence": "npm publish dist/packages/persistence",
+		"publish:query": "npm publish dist/packages/query",
 		"publish": "npm run publish:core && npm run publish:persistence && npm run publish:query"
 	},
 	"private": false,
