@@ -1,0 +1,46 @@
+{
+	"$schema": "../../node_modules/nx/schemas/project-schema.json",
+	"sourceRoot": "packages/query/src",
+	"projectType": "library",
+	"tags": [],
+	"targets": {
+		"build": {
+			"executor": "@nrwl/web:rollup",
+			"outputs": ["{options.outputPath}"],
+			"options": {
+				"outputPath": "dist/packages/query",
+				"tsConfig": "packages/query/tsconfig.lib.json",
+				"project": "packages/query/package.json",
+				"entryFile": "packages/query/src/index.ts",
+				"external": ["react/jsx-runtime"],
+				"rollupConfig": "@nrwl/react/plugins/bundle-rollup",
+				"compiler": "babel",
+				"assets": [
+					{
+						"glob": "packages/query/README.md",
+						"input": ".",
+						"output": "."
+					}
+				]
+			}
+		},
+		"lint": {
+			"executor": "@nrwl/linter:eslint",
+			"outputs": ["{options.outputFile}"],
+			"options": {
+				"lintFilePatterns": ["packages/query/**/*.{ts,tsx,js,jsx}"]
+			}
+		},
+		"test": {
+			"executor": "@nrwl/jest:jest",
+			"outputs": ["coverage/packages/query"],
+			"options": {
+				"jestConfig": "packages/query/jest.config.ts",
+				"passWithNoTests": true
+			}
+		},
+		"tsCheck": {
+			"executor": "./tools/executors/tsCheck:tsCheck"
+		}
+	}
+}

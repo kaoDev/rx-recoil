@@ -1,0 +1,9 @@
+{
+	"executors": {
+		"tsCheck": {
+			"implementation": "./impl",
+			"schema": "./schema.json",
+			"description": "Runs a type check for the project"
+		}
+	}
+}
