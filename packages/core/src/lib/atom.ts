@@ -1,6 +1,5 @@
 import { BehaviorSubject } from 'rxjs'
 import { createUseValueHook } from './helpers'
-import { ErrorReporter, reportError } from './reportError'
 import {
 	AtomDefinition,
 	InternalRegisteredState,
@@ -48,7 +47,6 @@ function readInitialValue<Value>(
 export function createAtom<Value, UpdateEvent = Value>(
 	atomDefinition: AtomDefinition<Value, UpdateEvent>,
 	stateSleepCache: Map<StateKey, unknown>,
-	report?: ErrorReporter,
 ): InternalRegisteredState<Value, UpdateEvent> {
 	const initialValueFromSleep = stateSleepCache.get(atomDefinition.key) as
 		| Value
@@ -65,12 +63,7 @@ export function createAtom<Value, UpdateEvent = Value>(
 		}
 	}
 
-	const onError = reportError(report)
-
-	const { useValue, useValueRaw, unsubscribe } = createUseValueHook(
-		value$,
-		(e) => onError(e, `Exception in atom value stream`),
-	)
+	const { useValue, useValueRaw } = createUseValueHook(value$)
 
 	const atom: MutatableState<Value, UpdateEvent> = {
 		useValue,
@@ -85,6 +78,5 @@ export function createAtom<Value, UpdateEvent = Value>(
 	return {
 		state: atom,
 		refs: new Set(),
-		onUnmount: () => unsubscribe(),
 	}
 }

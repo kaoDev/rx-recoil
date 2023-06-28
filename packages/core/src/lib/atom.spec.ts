@@ -1,4 +1,4 @@
-import { cleanup, act } from '@testing-library/react'
+import { act, cleanup } from '@testing-library/react'
 import { atom } from './atom'
 import { useAtom } from './core'
 import { renderHookInStateRoot } from './testHelpers'
@@ -34,7 +34,7 @@ describe('rx-recoil atom functionality', () => {
 		})
 
 		const { result, rerender } = renderHookInStateRoot(
-			() => useAtom(testAtom, { sync: true }),
+			() => useAtom(testAtom),
 			{},
 		)
 

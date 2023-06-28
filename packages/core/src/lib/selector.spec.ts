@@ -1,11 +1,11 @@
-import { cleanup, act } from '@testing-library/react'
+import { act, cleanup } from '@testing-library/react'
 import { Subject } from 'rxjs'
 import { map, take } from 'rxjs/operators'
 import { atom } from './atom'
-import { createStateContextValue, StateRoot, useAtom, useAtomRaw } from './core'
+import { createStateContextValue, useAtom, useAtomRaw } from './core'
 import { selector } from './selector'
-import { EMPTY_VALUE } from './types'
 import { renderHookInStateRoot } from './testHelpers'
+import { EMPTY_VALUE } from './types'
 
 describe('rx-recoil selector functionality', () => {
 	afterEach(() => {
@@ -48,7 +48,7 @@ describe('rx-recoil selector functionality', () => {
 		)
 
 		const { result, rerender } = renderHookInStateRoot(
-			() => useAtom(testSelector, { sync: true }),
+			() => useAtom(testSelector),
 			{},
 		)
 		act(() => result.current[1]('updated'))
@@ -73,8 +73,8 @@ describe('rx-recoil selector functionality', () => {
 
 		const { result, rerender } = renderHookInStateRoot(() => {
 			return {
-				selector: useAtom(testSelector, { sync: true }),
-				atom: useAtom(testAtom, { sync: true }),
+				selector: useAtom(testSelector),
+				atom: useAtom(testAtom),
 			}
 		}, {})
 		expect(result.current.selector[0]).toBe('testSelector')
@@ -100,7 +100,7 @@ describe('rx-recoil selector functionality', () => {
 			stateRootValue,
 		})
 		const { result, rerender } = renderHookInStateRoot(
-			() => useAtom(testSelector, { sync: true }),
+			() => useAtom(testSelector),
 			{
 				stateRootValue,
 			},
@@ -118,7 +118,7 @@ describe('rx-recoil selector functionality', () => {
 		const testSelector = selector(() => selectorPromise)
 
 		const { result, rerender } = renderHookInStateRoot(
-			() => useAtomRaw(testSelector, { sync: true }),
+			() => useAtomRaw(testSelector),
 			{},
 		)
 		expect(result.current[0]).toBe(EMPTY_VALUE)

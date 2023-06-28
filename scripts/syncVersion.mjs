@@ -3,7 +3,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import rootPackage from '../package.json'
+import rootPackage from '../package.json' assert { type: 'json' }
 
 const __dirname = path.dirname(
 	fileURLToPath(

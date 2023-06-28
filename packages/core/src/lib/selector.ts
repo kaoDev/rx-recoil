@@ -1,6 +1,6 @@
 import { BehaviorSubject, from, merge, of, Unsubscribable } from 'rxjs'
 import { map, mergeMap } from 'rxjs/operators'
-import { createUseValueHook, isPromise, isObservable } from './helpers'
+import { createUseValueHook, isObservable, isPromise } from './helpers'
 import { ErrorReporter, reportError } from './reportError'
 import {
 	createPublicStateReadAccess,
@@ -131,7 +131,6 @@ export function createSelector<Value, Update>(
 				? fallback
 				: initialValue),
 	)
-	const onError = reportError(report)
 
 	let initialValueSubscription: undefined | Unsubscribable
 
@@ -177,17 +176,10 @@ export function createSelector<Value, Update>(
 					reportError(report)(error, `Exception in selector value stream`),
 			)
 
-	const {
-		useValue,
-		useValueRaw,
-		unsubscribe: unsubscribeValueHook,
-	} = createUseValueHook(value$, (e) =>
-		onError(e, `Exception in selector value stream`),
-	)
+	const { useValue, useValueRaw } = createUseValueHook(value$)
 
 	function onUnmount() {
 		subscription.unsubscribe()
-		unsubscribeValueHook()
 		initialValueSubscription?.unsubscribe()
 	}
 

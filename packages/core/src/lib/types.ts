@@ -88,8 +88,8 @@ export interface MutatableSelectorDefinition<Value, Update>
 }
 
 export interface ReadOnlyState<Value> extends BaseStateDefinition {
-	useValue: (synchronous?: boolean) => Exclude<Value, EMPTY_TYPE>
-	useValueRaw: (synchronous?: boolean) => Value
+	useValue: () => Exclude<Value, EMPTY_TYPE>
+	useValueRaw: () => Value
 	value$: ReadonlyStateValue<Value>
 }
 
